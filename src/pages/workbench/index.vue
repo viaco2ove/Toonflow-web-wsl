@@ -69,7 +69,7 @@ const btnStyle = computed(() => ({
     color: #111827;
     display: flex;
     align-items: center;
-      color: var(--td-text-color-primary);
+    color: var(--td-text-color-primary);
     .logo {
       width: 32px;
       height: 32px;

@@ -2,9 +2,9 @@
  * 检查 GitHub 最新版本并与本地版本对比
  */
 
-const GITHUB_API_URL = 'https://api.github.com/repos/viaco2ove/Toonflow-web-wsl/tags';
-const RELEASE_URL = 'https://github.com/viaco2ove/Toonflow-web-wsl/releases';
-const LAST_CHECK_TS_KEY = 'toonflow_last_update_check_ts';
+const GITHUB_API_URL = "https://api.github.com/repos/viaco2ove/Toonflow-web-wsl/tags";
+const RELEASE_URL = "https://github.com/viaco2ove/Toonflow-web-wsl/releases";
+const LAST_CHECK_TS_KEY = "toonflow_last_update_check_ts";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateInfo {
@@ -22,8 +22,8 @@ export interface UpdateInfo {
  */
 function compareVersions(current: string, latest: string): boolean {
   // 移除 'v' 前缀
-  const currentParts = current.replace(/^v/, '').split('.').map(Number);
-  const latestParts = latest.replace(/^v/, '').split('.').map(Number);
+  const currentParts = current.replace(/^v/, "").split(".").map(Number);
+  const latestParts = latest.replace(/^v/, "").split(".").map(Number);
 
   for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
     const currentPart = currentParts[i] || 0;

@@ -22,5 +22,5 @@ export default {
   anthropic: anthropic,
   runninghub: runninghub,
   gemini: gemini,
-  grsai
+  grsai,
 } as const;

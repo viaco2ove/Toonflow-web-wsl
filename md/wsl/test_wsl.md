@@ -1,5 +1,5 @@
 
-# 2. 前端使用 UI 测试配置时，运行 
+# 前端使用 UI 测试配置时，运行 
 ```
 wsl
 mkdir -p "/node_modules_wsl"

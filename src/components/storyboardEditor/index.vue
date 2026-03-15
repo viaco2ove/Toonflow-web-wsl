@@ -360,7 +360,10 @@ function doFusionEdit(storyboard: Storyboard): void {
   mockStoryboard.value.prompt = typeof mockStoryboard.value.prompt === "string" ? mockStoryboard.value.prompt : "";
   mockStoryboard.value.editPrompt = typeof mockStoryboard.value.editPrompt === "string" ? mockStoryboard.value.editPrompt : "@图1 进行细节优化";
   mockStoryboard.value.otherImgs = Array.isArray(mockStoryboard.value.otherImgs) ? mockStoryboard.value.otherImgs : [];
-  mockStoryboard.value.generateImg = [{ filePath: mockStoryboard.value.filePath }, ...(Array.isArray(mockStoryboard.value.generateImg) ? mockStoryboard.value.generateImg : [])];
+  mockStoryboard.value.generateImg = [
+    { filePath: mockStoryboard.value.filePath },
+    ...(Array.isArray(mockStoryboard.value.generateImg) ? mockStoryboard.value.generateImg : []),
+  ];
   resultSelectedIndex.value = Number.isFinite(Number(mockStoryboard.value.selectedResultId))
     ? Number(mockStoryboard.value.selectedResultId)
     : mockStoryboard.value.generateImg.findIndex((item) => item.filePath === storyboard.filePath);

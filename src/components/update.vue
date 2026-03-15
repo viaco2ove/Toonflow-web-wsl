@@ -1,11 +1,6 @@
 <template>
   <div class="updateDialog">
-    <t-dialog
-      v-model:visible="showUpdate"
-      header="发现新版本"
-      :footer="false"
-      width="400px"
-    >
+    <t-dialog v-model:visible="showUpdate" header="发现新版本" :footer="false" width="400px">
       <div class="updateContent">
         <div class="versionInfo">
           <div class="versionRow">
@@ -40,8 +35,8 @@ const showUpdate = ref(false);
 
 const updateInfo = ref<UpdateInfo>({
   hasUpdate: false,
-  currentVersion: '',
-  latestVersion: '',
+  currentVersion: "",
+  latestVersion: "",
   releaseUrl: RELEASE_URL,
 });
 
@@ -50,7 +45,7 @@ async function checkUpdate() {
   const currentVersion = indexStore.version;
   const result = await checkForUpdate(currentVersion);
   updateInfo.value = result;
-  
+
   if (result.hasUpdate) {
     showUpdate.value = true;
   }
@@ -63,7 +58,7 @@ function handleLater() {
 
 // 立即更新
 function handleUpdate() {
-  window.open(updateInfo.value.releaseUrl, '_blank');
+  window.open(updateInfo.value.releaseUrl, "_blank");
   showUpdate.value = false;
 }
 

@@ -28,7 +28,7 @@ instance.interceptors.response.use(
       message.error("登录已过期，请重新登录");
     }
     return Promise.reject(error?.response?.data ?? error);
-  }
+  },
 );
 
 export default instance;

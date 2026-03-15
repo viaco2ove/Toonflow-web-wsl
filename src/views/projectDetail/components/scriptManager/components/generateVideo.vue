@@ -25,11 +25,7 @@
           <button :disabled="!currentConfigs.length" class="generate-btn" style="margin-left: 10px" @click="toggleSelectAllConfigs">
             {{ selectedConfigIds.length === currentConfigs.length ? "取消全选" : "全选" }}
           </button>
-          <button
-            :disabled="selectedConfigIds.length === 0"
-            class="generate-btn"
-            style="margin-left: 10px"
-            @click="deleteSelectedConfigs">
+          <button :disabled="selectedConfigIds.length === 0" class="generate-btn" style="margin-left: 10px" @click="deleteSelectedConfigs">
             删除选中({{ selectedConfigIds.length }})
           </button>
         </template>
@@ -67,6 +63,19 @@
                   <span class="status-text">正在生成中...</span>
                   <span class="status-hint">{{ getResultCount(config.id) }}个结果</span>
                   <button class="refresh-status-btn" @click.stop="refreshRunningStatus(config.id)">刷新状态</button>
+                </div>
+              </template>
+
+              <!-- 有失败结果 -->
+              <template v-else-if="hasFailedResult(config.id)">
+                <div class="status-wrapper failed">
+                  <div class="failed-icon">
+                    <i-close-one theme="filled" :size="28" fill="#ef4444" />
+                  </div>
+                  <span class="status-text">生成失败</span>
+                  <span class="status-hint" :title="getLatestFailedReason(config.id)">
+                    {{ getLatestFailedReason(config.id) || "点击进入查看详情" }}
+                  </span>
                 </div>
               </template>
 
@@ -204,6 +213,17 @@ function getSelectedResult(configId: number): VideoResult | null {
 function hasGeneratingResult(configId: number): boolean {
   const results = store.getResultsByConfigId(configId);
   return results.some((r) => r.state === 0);
+}
+
+function hasFailedResult(configId: number): boolean {
+  const results = store.getResultsByConfigId(configId);
+  return results.some((r) => r.state === -1);
+}
+
+function getLatestFailedReason(configId: number): string {
+  const results = store.getResultsByConfigId(configId);
+  const failed = [...results].filter((r) => r.state === -1).sort((a, b) => b.id - a.id)[0];
+  return failed?.errorReason || "";
 }
 
 // 获取结果数量
@@ -630,6 +650,33 @@ async function refreshRunningStatus(configId: number) {
             .status-hint {
               color: #9ca3af;
               font-size: 12px;
+            }
+          }
+
+          &.failed {
+            .failed-icon {
+              width: 50px;
+              height: 50px;
+              background: rgba(239, 68, 68, 0.08);
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .status-text {
+              color: #ef4444;
+              font-size: 14px;
+              font-weight: 600;
+            }
+
+            .status-hint {
+              color: #9ca3af;
+              font-size: 12px;
+              max-width: 220px;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
             }
           }
         }

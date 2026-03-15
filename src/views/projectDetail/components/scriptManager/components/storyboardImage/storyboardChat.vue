@@ -744,6 +744,31 @@ const gridData = ref<GridItem[]>([
 // 正在生成图片的分镜ID集合（存储 Shot.id）
 const generatingIds = ref<number[]>([]);
 
+async function syncVideoStoreDataForCanvas() {
+  if (!isVideoMode.value) return;
+  const sid = Number(props.scriptId || 0);
+  const pid = Number(props.projectId || 0);
+  if (!sid || !pid) return;
+  await videoStoreInstance.setCurrentScript(sid, pid);
+}
+
+watch(
+  () => modalShow.value,
+  (open) => {
+    if (!open) return;
+    void syncVideoStoreDataForCanvas();
+  },
+);
+
+watch(
+  () => [props.scriptId, props.projectId, isVideoMode.value] as const,
+  ([scriptId, projectId, videoMode]) => {
+    if (!videoMode || !modalShow.value) return;
+    if (!Number(scriptId || 0) || !Number(projectId || 0)) return;
+    void syncVideoStoreDataForCanvas();
+  },
+);
+
 // GridItem 类型定义（与后端 Shot 一致）
 interface GridItem {
   id?: number; // 分镜独立ID（来自后端 Shot.id）
@@ -862,6 +887,18 @@ async function handleDraftGenerate(payload: Record<string, any>) {
     return;
   }
   await sendApi(`/生成视频 ${targetId}`);
+  const sid = Number(props.scriptId || payload?.scriptId || 0);
+  if (sid > 0) {
+    setTimeout(() => {
+      void videoStoreInstance.fetchVideoData(sid);
+    }, 600);
+    setTimeout(() => {
+      void videoStoreInstance.fetchVideoData(sid);
+    }, 1800);
+    setTimeout(() => {
+      void videoStoreInstance.fetchVideoData(sid);
+    }, 3600);
+  }
 }
 
 //导出全部镜头

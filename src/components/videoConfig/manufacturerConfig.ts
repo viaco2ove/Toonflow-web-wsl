@@ -633,7 +633,7 @@ function getManufacturerSupportedResolutions(
   });
 
   let resolutions: { label: string; value: string }[] = [];
-  let resolutionLabel = "分辨率";
+  const resolutionLabel = "分辨率";
 
   if (allResolutions.size > 0) {
     resolutions = Array.from(allResolutions).map((res) => ({
@@ -763,7 +763,7 @@ export function getModelBasedConfig(modelConfig: ModelConfig): ManufacturerConfi
 
   // 从 aspectRatio 或 durationResolutionMap 生成 resolutions
   let resolutions: { label: string; value: string }[] = [];
-  let resolutionLabel = "分辨率";
+  const resolutionLabel = "分辨率";
   if (modelConfig.durationResolutionMap.length > 0) {
     const allResolutions = new Set<string>();
     modelConfig.durationResolutionMap.forEach((map) => {

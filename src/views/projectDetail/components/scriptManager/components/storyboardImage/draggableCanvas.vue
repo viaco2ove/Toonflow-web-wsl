@@ -25,11 +25,44 @@
           </div>
         </div>
 
-        <a-spin :spinning="isGenerating(grid.id)" tip="生成中...">
+        <a-spin :spinning="!props.disableEditor && isGenerating(grid.id)" tip="生成中...">
           <div class="grid" :style="getGridStyle(grid.cells.length)">
             <div v-for="(cell, index) in grid.cells" :key="index" class="gridItem" :style="getImageSize">
               <div v-if="!props.disableEditor" class="tag">镜头{{ index + 1 }}</div>
-              <template v-if="cell.src">
+              <template v-if="props.disableEditor && index === 0">
+                <template v-if="getSelectedVideoResult(grid)?.state === 1">
+                  <img
+                    v-if="getSelectedVideoResult(grid)?.firstFrame"
+                    :src="getSelectedVideoResult(grid)?.firstFrame"
+                    loading="lazy"
+                    class="video-result-cover" />
+                  <video
+                    v-else-if="getSelectedVideoResult(grid)?.filePath"
+                    :src="getSelectedVideoResult(grid)?.filePath"
+                    class="video-result-cover"
+                    preload="metadata"></video>
+                  <div v-else class="cellText">已选择视频</div>
+                  <div class="selectedVideoBadge">已选择视频</div>
+                  <div v-if="getSelectedVideoResult(grid)?.duration" class="videoDuration">
+                    {{ formatDuration(getSelectedVideoResult(grid)?.duration || 0) }}
+                  </div>
+                </template>
+                <template v-else-if="isVideoResultGenerating(grid)">
+                  <div class="generatingPlaceholder">
+                    <span class="generatingSpinner"></span>
+                    <span class="pendingText">生成中...</span>
+                    <span class="pendingHint">退出后会自动保持生成中状态</span>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="pendingPlaceholder">
+                    <span class="pendingIcon">⚙</span>
+                    <span class="pendingText">待生成</span>
+                    <span class="pendingHint">点击进入生成</span>
+                  </div>
+                </template>
+              </template>
+              <template v-else-if="cell.src">
                 <img :src="cell.src" loading="lazy" @click="editImage(cell, grid.segmentId)" :style="getImageSize" />
                 <div class="cellPrompt" :title="cell.prompt" @click.stop="updateCellPrompt($event, cell, grid.segmentId)">{{ cell.prompt }}</div>
                 <i-preview-open
@@ -69,8 +102,10 @@
 <script setup>
 import storyboardEditor from "@/components/storyboardEditor/index.vue";
 import mainStore from "@/stores/index";
+import videoStore from "@/stores/video";
 const editorRef = ref(null);
 const { project } = storeToRefs(mainStore());
+const videoStoreInstance = videoStore();
 const props = defineProps({
   modelValue: { type: Array, required: true },
   generatingIds: { type: [Array, Set], default: () => [] },
@@ -86,6 +121,52 @@ const isGenerating = (shotId) => {
   }
   return Array.isArray(props.generatingIds) && props.generatingIds.includes(shotId);
 };
+function getVideoConfigId(grid) {
+  return Number(grid?.id || grid?.segmentId || 0);
+}
+function getVideoResultsByGrid(grid) {
+  if (!props.disableEditor) return [];
+  const configId = getVideoConfigId(grid);
+  if (!configId) return [];
+  const list = videoStoreInstance.getResultsByConfigId(configId);
+  if (Array.isArray(list) && list.length) return list;
+  return [];
+}
+function isVideoResultGenerating(grid) {
+  const pending = getVideoResultsByGrid(grid)
+    .filter((item) => Number(item?.state) === 0)
+    .sort((a, b) => Number(b?.id || 0) - Number(a?.id || 0));
+  if (pending.length > 0) return true;
+  if (Number(grid?.selectedResultState || 0) === 0) return true;
+  return false;
+}
+function getSelectedVideoResult(grid) {
+  if (!props.disableEditor) return null;
+  const configId = getVideoConfigId(grid);
+  if (!configId) return null;
+  const selectedResultId = Number(grid?.selectedResultId || 0);
+  const selected = videoStoreInstance.getSelectedResult(configId);
+  if (selected) return selected;
+  if (selectedResultId > 0) {
+    const selectedById = (videoStoreInstance.videoResults || []).find((item) => Number(item?.id || 0) === selectedResultId);
+    if (selectedById) return selectedById;
+  }
+  const fallbackFirstFrame = String(grid?.selectedResultFirstFrame || grid?.cells?.[0]?.src || "");
+  const fallbackFilePath = String(grid?.selectedResultFilePath || "");
+  if (!selectedResultId && !fallbackFirstFrame && !fallbackFilePath) return null;
+  return {
+    id: selectedResultId || -1,
+    state: 1,
+    firstFrame: fallbackFirstFrame || fallbackFilePath,
+    filePath: fallbackFilePath || fallbackFirstFrame,
+    duration: Number(grid?.selectedResultDuration || 0),
+  };
+}
+function formatDuration(seconds) {
+  const mins = Math.floor(Number(seconds || 0) / 60);
+  const secs = Math.floor(Number(seconds || 0) % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
 const clickOption = {
   segmentId: null,
@@ -570,8 +651,44 @@ $hoverBg: #e8f4ff;
     position: relative !important;
   }
 
-  .gridItem::before {
-    content: "⚙";
+  .gridItem .preview,
+  .gridItem .cellPrompt {
+    display: none !important;
+  }
+
+  .gridItem .video-result-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .gridItem .pendingPlaceholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .gridItem .generatingPlaceholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .gridItem .generatingSpinner {
+    width: 72px;
+    height: 72px;
+    border-radius: 999px;
+    border: 4px solid #eadcff;
+    border-top-color: #7c3aed;
+    animation: video-card-spin 0.9s linear infinite;
+  }
+
+  .gridItem .pendingIcon {
     width: 72px;
     height: 72px;
     border-radius: 999px;
@@ -581,23 +698,54 @@ $hoverBg: #e8f4ff;
     align-items: center;
     justify-content: center;
     font-size: 34px;
-    margin-bottom: 14px;
   }
 
-  .gridItem::after {
-    content: "待生成\A点击进入生成";
-    white-space: pre;
+  .gridItem .pendingText {
+    color: #64748b;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .gridItem .pendingHint {
     color: #94a3b8;
-    text-align: center;
-    font-size: 16px;
-    line-height: 1.45;
+    font-size: 14px;
+    line-height: 1.2;
   }
 
-  .gridItem img,
-  .gridItem .preview,
-  .gridItem .cellPrompt,
-  .gridItem .cellText {
-    display: none !important;
+  .gridItem .selectedVideoBadge {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(124, 58, 237, 0.88);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.2;
+    z-index: 2;
+  }
+
+  .gridItem .videoDuration {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.2;
+    z-index: 2;
+  }
+}
+
+@keyframes video-card-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }
 

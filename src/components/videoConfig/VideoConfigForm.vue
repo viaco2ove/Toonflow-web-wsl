@@ -225,7 +225,7 @@ import {
   getDurationTip,
   getMaxImages,
   getAudioSupport,
-  getModelList
+  getModelList,
 } from "./manufacturerConfig";
 
 const props = withDefaults(
@@ -441,9 +441,9 @@ onMounted(async () => {
     }
   }
 });
-onMounted(() =>{
-  getModelList()
-})
+onMounted(() => {
+  getModelList();
+});
 </script>
 
 <style lang="scss" scoped>

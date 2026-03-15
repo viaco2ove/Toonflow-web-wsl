@@ -298,7 +298,11 @@ const manufacturerAllRecord: Record<string, string> = Object.values(manufacturer
 }, {});
 const availableManufacturers = computed(() => {
   if (manufacturerList.value.length === 0) return [];
-  return manufacturerList.value.map((i) => ({ label: i.model + " " +manufacturerAllRecord[i.manufacturer], value: i.id, manufacturer: i.manufacturer }));
+  return manufacturerList.value.map((i) => ({
+    label: i.model + " " + manufacturerAllRecord[i.manufacturer],
+    value: i.id,
+    manufacturer: i.manufacturer,
+  }));
 });
 onMounted(async () => {
   getModelList();

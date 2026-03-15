@@ -57,7 +57,7 @@
           </template>
           <div class="editorBody">
             <t-textarea v-model="editingValue" placeholder="请输入提示词内容" class="promptTextarea" />
-     <span>*{{ hasCustomValue ? '当前使用自定义提示词，点击"一键重置"可恢复默认值' : "当前使用默认提示词，编辑后将保存为自定义值" }}</span>
+            <span>*{{ hasCustomValue ? '当前使用自定义提示词，点击"一键重置"可恢复默认值' : "当前使用默认提示词，编辑后将保存为自定义值" }}</span>
           </div>
         </t-card>
       </template>

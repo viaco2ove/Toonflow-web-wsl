@@ -29,9 +29,9 @@ async function handleLogout() {
     localStorage.removeItem("token");
     // 清除其他可能的用户数据
     localStorage.removeItem("user");
-    
+
     MessagePlugin.success("退出登录成功");
-    
+
     // 跳转到登录页面
     router.push("/login");
   } catch (error) {

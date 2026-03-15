@@ -45,18 +45,18 @@ const formData = ref<RequestForm>({
 const formRules: FormRules<RequestForm> = {
   baseUrl: [
     { required: true, message: "请输入 API 地址", trigger: "blur" },
-    { 
-      pattern: /^https?:\/\/.+/, 
-      message: "请输入有效的 HTTP/HTTPS 地址", 
-      trigger: "blur" 
+    {
+      pattern: /^https?:\/\/.+/,
+      message: "请输入有效的 HTTP/HTTPS 地址",
+      trigger: "blur",
     },
   ],
   wsBaseUrl: [
     { required: true, message: "请输入 WebSocket 地址", trigger: "blur" },
-    { 
-      pattern: /^wss?:\/\/.+/, 
-      message: "请输入有效的 WS/WSS 地址", 
-      trigger: "blur" 
+    {
+      pattern: /^wss?:\/\/.+/,
+      message: "请输入有效的 WS/WSS 地址",
+      trigger: "blur",
     },
   ],
 };

@@ -31,6 +31,7 @@ export interface VideoConfig {
 // 视频生成结果
 export interface VideoResult {
   id: number;
+  scriptId: number;
   configId: number; // 关联的配置ID
   state: 0 | 1 | -1; // 生成中/成功/失败
   filePath: string;
@@ -106,6 +107,7 @@ export default defineStore(
             if (updated) {
               return {
                 ...r,
+                scriptId: updated.scriptId || r.scriptId,
                 state: updated.state,
                 filePath: updated.filePath || r.filePath,
                 firstFrame: updated.firstFrame || r.firstFrame,
@@ -128,15 +130,10 @@ export default defineStore(
 
     // 解析后端视频数据为结果列表（不再重建配置）
     function parseVideoResults(data: any[], scriptId: number) {
-      // 获取当前脚本的所有配置ID
-      const scriptConfigIds = videoConfigs.value.filter((c) => c.scriptId === scriptId).map((c) => c.id);
-
-      // 清空当前脚本配置关联的旧结果
-      videoResults.value = videoResults.value.filter((r) => !scriptConfigIds.includes(r.configId));
-
-      // 添加新的结果
+      // 全量刷新时，直接替换当前脚本的结果，避免草稿负ID被重复追加
       const newResults: VideoResult[] = data.map((item: any) => ({
         id: item.id,
+        scriptId: item.scriptId || scriptId,
         configId: item.configId || 0, // 后端应该返回 configId
         state: item.state,
         filePath: item.filePath || "",
@@ -147,10 +144,12 @@ export default defineStore(
         errorReason: item.errorReason || "",
       }));
 
-      // 按ID升序排序，新的在后面
-      newResults.sort((a, b) => a.id - b.id);
-
-      videoResults.value = [...videoResults.value, ...newResults];
+      // 去重并排序
+      const dedupMap = new Map<number, VideoResult>();
+      newResults.forEach((item) => dedupMap.set(item.id, item));
+      const merged = [...videoResults.value.filter((r) => r.scriptId !== scriptId), ...Array.from(dedupMap.values())];
+      merged.sort((a, b) => a.id - b.id);
+      videoResults.value = merged;
     }
 
     // 从后端获取视频配置列表
@@ -275,6 +274,11 @@ export default defineStore(
         throw new Error("配置不存在");
       }
 
+      const pending = getResultsByConfigId(configId).find((r) => r.state === 0);
+      if (pending) {
+        throw new Error("当前配置已有生成中的任务，请先等待或点击“刷新状态”");
+      }
+
       // 构建图片路径列表
       const videoImgs: string[] = [];
       if (config.mode === "startEnd") {
@@ -303,18 +307,38 @@ export default defineStore(
 
       // 添加新的结果到列表（使用后端返回的真实 ID）
       if (data && data.id) {
-        const newResult: VideoResult = {
-          id: data.id,
-          configId: configId,
-          state: 0, // 生成中
-          filePath: "",
-          firstFrame: "",
-          duration: config.duration,
-          prompt: config.prompt,
-          createdAt: new Date().toISOString(),
-        };
-        // 使用展开运算符创建新数组，确保触发响应式更新
-        videoResults.value = [...videoResults.value, newResult];
+        const existing = videoResults.value.find((r) => r.id === data.id);
+        if (existing) {
+          existing.scriptId = config.scriptId;
+          existing.configId = configId;
+          existing.state = 0;
+          existing.duration = config.duration;
+          existing.prompt = config.prompt;
+        } else {
+          const newResult: VideoResult = {
+            id: data.id,
+            scriptId: config.scriptId,
+            configId: configId,
+            state: 0, // 生成中
+            filePath: "",
+            firstFrame: "",
+            duration: config.duration,
+            prompt: config.prompt,
+            createdAt: new Date().toISOString(),
+          };
+          // 使用展开运算符创建新数组，确保触发响应式更新
+          videoResults.value = [...videoResults.value, newResult];
+        }
+
+        // 立刻拉一次状态，避免用户感觉“点击无效”
+        await fetchVideoData(config.scriptId, [data.id]);
+        // 任务写入远端存在延迟，补两次短延迟刷新
+        setTimeout(() => {
+          void fetchVideoData(config.scriptId, [data.id]);
+        }, 1200);
+        setTimeout(() => {
+          void fetchVideoData(config.scriptId, [data.id]);
+        }, 3000);
 
         // 强制开始轮询，确保新添加的结果能被轮询到
         startPolling(true);
@@ -381,7 +405,7 @@ export default defineStore(
           if (currentScriptId.value) {
             await fetchVideoData(currentScriptId.value, pendingResultIds.value);
           }
-        }, 10000);
+        }, 4000);
       });
     }
 

@@ -70,9 +70,7 @@ const editForm = ref<VideoModelType | undefined>(undefined);
 const videoModelDialogShow = ref(false);
 
 // 获取厂商标签主题
-function getManufacturerTheme(
-  manufacturer: string
-): "primary" | "warning" | "success" | "danger" | "default" | undefined {
+function getManufacturerTheme(manufacturer: string): "primary" | "warning" | "success" | "danger" | "default" | undefined {
   const themes: Record<string, "primary" | "warning" | "success" | "danger" | "default"> = {
     deepSeek: "primary",
     volcengine: "warning",

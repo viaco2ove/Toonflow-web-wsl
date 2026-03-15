@@ -21,13 +21,7 @@
     </t-card>
 
     <!-- 表格 -->
-    <t-table
-      :data="originalList"
-      :columns="columns"
-      row-key="id"
-      hover
-      max-height="500"
-      style="margin-top: 12px">
+    <t-table :data="originalList" :columns="columns" row-key="id" hover max-height="500" style="margin-top: 12px">
       <template #chapterData="{ row }">
         <t-tooltip :content="row.chapterData" placement="top">
           <span class="ellipsis-text">{{ row.chapterData }}</span>

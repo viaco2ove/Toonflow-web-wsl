@@ -164,9 +164,8 @@ const config = computed(() => {
 
 // 当前配置的所有结果
 const results = computed(() => {
-  if (isDraftMode.value) return [];
   if (!props.configId) return [];
-  return store.getResultsByConfigId(props.configId);
+  return store.getResultsByConfigId(Number(props.configId));
 });
 watch(modalVisible, (v) => {
   if (v) {
@@ -254,16 +253,43 @@ function formatDuration(seconds: number): string {
 // 生成视频
 async function handleGenerate() {
   if (isDraftMode.value && props.draftConfig && editableConfig.value) {
-    emit("draftGenerate", {
-      ...props.draftConfig,
-      ...editableConfig.value,
-      id: Number(props.configId || props.draftConfig.id || 0),
-      scriptId: Number(props.draftConfig.scriptId || 0),
-    });
+    if (results.value.some((item) => item.state === 0)) {
+      message.warning("当前配置已有生成中的任务，请先等待或点击“刷新状态”");
+      return;
+    }
+    isGenerating.value = true;
+    try {
+      const nextConfig = {
+        ...props.draftConfig,
+        ...editableConfig.value,
+        id: Number(props.configId || props.draftConfig.id || 0),
+        scriptId: Number(props.draftConfig.scriptId || 0),
+      };
+      emit("draftGenerate", nextConfig);
+      const sid = Number(nextConfig.scriptId || 0);
+      if (sid > 0) {
+        setTimeout(() => {
+          void store.fetchVideoData(sid);
+        }, 600);
+        setTimeout(() => {
+          void store.fetchVideoData(sid);
+        }, 1800);
+        setTimeout(() => {
+          void store.fetchVideoData(sid);
+        }, 3600);
+      }
+    } finally {
+      isGenerating.value = false;
+    }
     return;
   }
 
   if (!props.configId) return;
+
+  if (results.value.some((item) => item.state === 0)) {
+    message.warning("当前配置已有生成中的任务，请先等待或点击“刷新状态”");
+    return;
+  }
 
   isGenerating.value = true;
   try {
@@ -290,6 +316,17 @@ async function handleSelectResult(result: VideoResult) {
 
   // 更新本地 store
   store.selectResult(props.configId, result.id);
+  if (isDraftMode.value && props.draftConfig) {
+    emit("draftChange", {
+      ...props.draftConfig,
+      id: Number(props.configId || props.draftConfig.id || 0),
+      scriptId: Number(props.draftConfig.scriptId || 0),
+      selectedResultId: result.id,
+      selectedResultFirstFrame: result.firstFrame || "",
+      selectedResultFilePath: result.filePath || "",
+      selectedResultDuration: result.duration || 0,
+    });
+  }
 
   // 调用后端接口更新选中结果
   try {

@@ -21,11 +21,7 @@
           <button :disabled="!data.length" class="generate-btn" style="margin-left: 10px" @click="toggleSelectAll">
             {{ selectedStoryboardIds.length === data.length ? "取消全选" : "全选" }}
           </button>
-          <button
-            :disabled="selectedStoryboardIds.length === 0"
-            class="generate-btn"
-            style="margin-left: 10px"
-            @click="deleteSelectedStoryboards">
+          <button :disabled="selectedStoryboardIds.length === 0" class="generate-btn" style="margin-left: 10px" @click="deleteSelectedStoryboards">
             删除选中({{ selectedStoryboardIds.length }})
           </button>
         </template>
@@ -327,7 +323,7 @@ function deleteSelectedStoryboards() {
       gap: 24px;
     }
 
-      .image-card {
+    .image-card {
       position: relative;
       background: #fff;
       border-radius: 16px;
