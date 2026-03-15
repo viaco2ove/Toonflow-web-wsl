@@ -880,12 +880,32 @@ function handleDraftChange(payload: Record<string, any>) {
   currentDraftConfig.value = { ...(currentDraftConfig.value || {}), ...payload, id: targetId };
 }
 
+function markVideoGridGenerating(targetId: number) {
+  if (!targetId) return;
+  gridData.value = gridData.value.map((item) =>
+    Number((item as any).id) === targetId
+      ? {
+          ...item,
+          selectedResultId: null,
+          selectedResultState: 0,
+        }
+      : item,
+  );
+  currentDraftConfig.value = {
+    ...(currentDraftConfig.value || {}),
+    id: targetId,
+    selectedResultId: null,
+    selectedResultState: 0,
+  };
+}
+
 async function handleDraftGenerate(payload: Record<string, any>) {
   const targetId = Number(payload?.id || currentVideoConfigId.value || 0);
   if (!targetId) {
     antMessage.warning("未找到视频配置ID");
     return;
   }
+  markVideoGridGenerating(targetId);
   await sendApi(`/生成视频 ${targetId}`);
   const sid = Number(props.scriptId || payload?.scriptId || 0);
   if (sid > 0) {

@@ -78,7 +78,9 @@ export default defineStore(
     function getSelectedResult(configId: number): VideoResult | null {
       const config = videoConfigs.value.find((c) => c.id === configId);
       if (!config || !config.selectedResultId) return null;
-      return videoResults.value.find((r) => r.id === config.selectedResultId) || null;
+      const selectedResultId = Number(config.selectedResultId);
+      if (!Number.isFinite(selectedResultId) || selectedResultId <= 0) return null;
+      return videoResults.value.find((r) => Number(r.id) === selectedResultId) || null;
     }
 
     // 设置当前脚本ID并加载数据
@@ -175,7 +177,7 @@ export default defineStore(
               resolution: item.resolution,
               duration: item.duration,
               prompt: item.prompt || "",
-              selectedResultId: item.selectedResultId,
+              selectedResultId: Number.isFinite(Number(item.selectedResultId)) ? Number(item.selectedResultId) : null,
               createdAt: item.createdAt || new Date().toISOString(),
               audioEnabled: item.audioEnabled,
             };
@@ -208,7 +210,7 @@ export default defineStore(
         resolution: configData.resolution,
         duration: configData.duration,
         prompt: configData.prompt || "",
-        selectedResultId: configData.selectedResultId || null,
+        selectedResultId: Number.isFinite(Number(configData.selectedResultId)) ? Number(configData.selectedResultId) : null,
         createdAt: configData.createdAt || new Date().toISOString(),
         audioEnabled: configData.audioEnabled,
       };
@@ -366,13 +368,18 @@ export default defineStore(
     // 更新配置（包括图片字段）
     function updateConfigFull(
       configId: number,
-      updates: Partial<Pick<VideoConfig, "prompt" | "resolution" | "duration" | "startFrame" | "endFrame" | "images" | "mode" | "audioEnabled">>,
+      updates: Partial<
+        Pick<VideoConfig, "prompt" | "resolution" | "duration" | "startFrame" | "endFrame" | "images" | "mode" | "audioEnabled" | "aiConfigId" | "manufacturer" | "model">
+      >,
     ) {
       console.log("%c Line:338 🍐 updates", "background:#465975", updates);
 
       const config = videoConfigs.value.find((c) => c.id === configId);
       console.log("%c Line:342 🌰 config", "background:#fca650", config);
       if (config) {
+        if (updates.aiConfigId !== undefined) config.aiConfigId = updates.aiConfigId;
+        if (updates.manufacturer !== undefined) config.manufacturer = updates.manufacturer;
+        if (updates.model !== undefined) config.model = updates.model;
         if (updates.prompt !== undefined) config.prompt = updates.prompt;
         if (updates.resolution !== undefined) config.resolution = updates.resolution;
         if (updates.duration !== undefined) config.duration = updates.duration;

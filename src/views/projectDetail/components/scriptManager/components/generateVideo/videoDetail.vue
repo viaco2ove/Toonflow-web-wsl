@@ -11,7 +11,7 @@
             :config="editableConfig"
             :script-id="config.scriptId"
             :editable="true"
-            :manufacturer-disabled="true"
+            :manufacturer-disabled="false"
             @change="handleConfigFormChange" />
         </div>
 
@@ -117,11 +117,12 @@ import { message } from "ant-design-vue";
 import videoStore, { type VideoResult } from "@/stores/video";
 import { storeToRefs } from "pinia";
 import axios from "@/utils/axios";
-import { VideoConfigForm, type VideoConfigData, getModelList } from "@/components/videoConfig";
+import { VideoConfigForm, type VideoConfigData, getModelList, isModeSupported } from "@/components/videoConfig";
 
 type DraftVideoConfig = VideoConfigData & {
   scriptId?: number;
   selectedResultId?: number | null;
+  selectedResultState?: number;
 };
 
 const props = defineProps<{
@@ -145,6 +146,10 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 
 // 可编辑配置（将 VideoConfig 转换为 VideoConfigData 格式）
 const editableConfig = ref<VideoConfigData | null>(null);
+const isModeAvailable = computed(() => {
+  if (!editableConfig.value) return true;
+  return isModeSupported(editableConfig.value.manufacturer, editableConfig.value.model, editableConfig.value.mode);
+});
 
 // 当前配置
 const config = computed(() => {
@@ -217,6 +222,9 @@ async function handleConfigFormChange(updatedConfig: VideoConfigData) {
 
   // 更新本地 store（包括图片变更）
   store.updateConfigFull(props.configId, {
+    aiConfigId: updatedConfig.aiConfigId,
+    manufacturer: updatedConfig.manufacturer,
+    model: updatedConfig.model,
     resolution: updatedConfig.resolution,
     duration: updatedConfig.duration,
     prompt: updatedConfig.prompt,
@@ -231,9 +239,11 @@ async function handleConfigFormChange(updatedConfig: VideoConfigData) {
   try {
     await axios.post("/video/upDateVideoConfig", {
       id: props.configId,
+      aiConfigId: updatedConfig.aiConfigId,
       resolution: updatedConfig.resolution,
       duration: updatedConfig.duration,
       prompt: updatedConfig.prompt,
+      mode: updatedConfig.mode,
       startFrame: updatedConfig.startFrame,
       endFrame: updatedConfig.endFrame,
       images: updatedConfig.images,
@@ -252,7 +262,15 @@ function formatDuration(seconds: number): string {
 
 // 生成视频
 async function handleGenerate() {
+  if (!isModeAvailable.value) {
+    message.warning("当前模型不支持该模式，请先更换模式或更换模型");
+    return;
+  }
   if (isDraftMode.value && props.draftConfig && editableConfig.value) {
+    if (Number(props.draftConfig?.selectedResultState || 0) === 0) {
+      message.warning("当前配置正在生成中，请先等待或点击“刷新状态”");
+      return;
+    }
     if (results.value.some((item) => item.state === 0)) {
       message.warning("当前配置已有生成中的任务，请先等待或点击“刷新状态”");
       return;

@@ -56,31 +56,8 @@
 
             <!-- 封面区域 -->
             <div class="cover-wrapper">
-              <!-- 有生成中的结果 - 优先显示 -->
-              <template v-if="hasGeneratingResult(config.id)">
-                <div class="status-wrapper generating">
-                  <div class="loading-spinner"></div>
-                  <span class="status-text">正在生成中...</span>
-                  <span class="status-hint">{{ getResultCount(config.id) }}个结果</span>
-                  <button class="refresh-status-btn" @click.stop="refreshRunningStatus(config.id)">刷新状态</button>
-                </div>
-              </template>
-
-              <!-- 有失败结果 -->
-              <template v-else-if="hasFailedResult(config.id)">
-                <div class="status-wrapper failed">
-                  <div class="failed-icon">
-                    <i-close-one theme="filled" :size="28" fill="#ef4444" />
-                  </div>
-                  <span class="status-text">生成失败</span>
-                  <span class="status-hint" :title="getLatestFailedReason(config.id)">
-                    {{ getLatestFailedReason(config.id) || "点击进入查看详情" }}
-                  </span>
-                </div>
-              </template>
-
-              <!-- 已选择结果且成功 -->
-              <template v-else-if="getSelectedResult(config.id)?.state === 1">
+              <!-- 已选择结果且成功：固定显示选中的视频 -->
+              <template v-if="getSelectedResult(config.id)?.state === 1">
                 <img
                   v-if="getSelectedResult(config.id)?.firstFrame"
                   :src="getSelectedResult(config.id)?.firstFrame"
@@ -95,7 +72,6 @@
                   <i-film :size="32" />
                   <span>视频</span>
                 </div>
-                <!-- <img :src="getSelectedResult(config.id)?.firstFrame || getSelectedResult(config.id)?.filePath" class="cover-image" alt="视频封面" /> -->
                 <div class="play-overlay">
                   <div class="play-button">
                     <i-play-one theme="filled" :size="32" fill="#fff" />
@@ -103,6 +79,29 @@
                 </div>
                 <div v-if="getSelectedResult(config.id)?.duration" class="duration-badge">
                   {{ formatDuration(getSelectedResult(config.id)!.duration) }}
+                </div>
+              </template>
+
+              <!-- 有生成中的结果 - 优先显示新一轮尝试 -->
+              <template v-else-if="hasGeneratingResult(config.id)">
+                <div class="status-wrapper generating">
+                  <div class="loading-spinner"></div>
+                  <span class="status-text">正在生成中...</span>
+                  <span class="status-hint">{{ getResultCount(config.id) }}个结果</span>
+                  <button class="refresh-status-btn" @click.stop="refreshRunningStatus(config.id)">刷新状态</button>
+                </div>
+              </template>
+
+              <!-- 最新一次尝试失败 -->
+              <template v-else-if="shouldShowFailedState(config.id)">
+                <div class="status-wrapper failed">
+                  <div class="failed-icon">
+                    <i-close-one theme="filled" :size="28" fill="#ef4444" />
+                  </div>
+                  <span class="status-text">生成失败</span>
+                  <span class="status-hint" :title="getLatestFailedReason(config.id)">
+                    {{ getLatestFailedReason(config.id) || "点击进入查看详情" }}
+                  </span>
                 </div>
               </template>
 
@@ -209,20 +208,31 @@ function getSelectedResult(configId: number): VideoResult | null {
   return store.getSelectedResult(configId);
 }
 
-// 检查是否有生成中的结果
-function hasGeneratingResult(configId: number): boolean {
-  const results = store.getResultsByConfigId(configId);
-  return results.some((r) => r.state === 0);
+function getResultsSorted(configId: number): VideoResult[] {
+  return [...store.getResultsByConfigId(configId)].sort((a, b) => b.id - a.id);
 }
 
-function hasFailedResult(configId: number): boolean {
-  const results = store.getResultsByConfigId(configId);
-  return results.some((r) => r.state === -1);
+function getLatestResult(configId: number): VideoResult | null {
+  return getResultsSorted(configId)[0] || null;
+}
+
+// 检查是否有生成中的结果
+function hasGeneratingResult(configId: number): boolean {
+  const latest = getLatestResult(configId);
+  return latest?.state === 0;
+}
+
+function shouldShowFailedState(configId: number): boolean {
+  const selected = getSelectedResult(configId);
+  if (selected && selected.state === 1) return false;
+  const latest = getLatestResult(configId);
+  if (!latest || latest.state !== -1) return false;
+  return true;
 }
 
 function getLatestFailedReason(configId: number): string {
-  const results = store.getResultsByConfigId(configId);
-  const failed = [...results].filter((r) => r.state === -1).sort((a, b) => b.id - a.id)[0];
+  const results = getResultsSorted(configId);
+  const failed = results.find((r) => r.state === -1);
   return failed?.errorReason || "";
 }
 

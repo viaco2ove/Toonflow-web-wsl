@@ -17,10 +17,11 @@
     <div class="form-row" v-if="editable">
       <label>模式</label>
       <a-radio-group v-model:value="localConfig.mode" @change="onModeChange" size="small">
-        <a-radio v-for="mode in getModeOptions(localConfig.manufacturer, localConfig.model)" :key="mode.value" :value="mode.value">
+        <a-radio v-for="mode in modeOptions" :key="mode.value" :value="mode.value">
           {{ mode.label }}
         </a-radio>
       </a-radio-group>
+      <span v-if="!isCurrentModeSupported" class="mode-warning">当前模型不支持该模式，请更换模式或更换模型</span>
     </div>
     <div class="form-row" v-else>
       <label>模式</label>
@@ -226,6 +227,7 @@ import {
   getMaxImages,
   getAudioSupport,
   getModelList,
+  isModeSupported,
 } from "./manufacturerConfig";
 
 const props = withDefaults(
@@ -259,6 +261,8 @@ const promptLoading = ref(false);
 // 图片选择器状态
 const selectorVisible = ref(false);
 const selectorMode = ref<"start" | "end" | "multi" | "single">("start");
+const modeOptions = computed(() => getModeOptions(localConfig.manufacturer, localConfig.model));
+const isCurrentModeSupported = computed(() => isModeSupported(localConfig.manufacturer, localConfig.model, localConfig.mode));
 
 // 监听外部配置变化
 watch(
@@ -293,16 +297,33 @@ function onManufacturerChange() {
 
   if (!selectedManufacturer) return;
 
+  const previousMode = localConfig.mode;
   localConfig.manufacturer = selectedManufacturer.manufacturer;
   localConfig.model = selectedManufacturer.model;
 
   const newConfig = getManufacturerConfig(localConfig.manufacturer, localConfig.model);
-  localConfig.mode = newConfig.defaultMode as VideoConfigData["mode"];
-  localConfig.resolution = newConfig.defaultResolution;
-  localConfig.duration = getDefaultDuration(localConfig.manufacturer, localConfig.model);
-  localConfig.startFrame = null;
-  localConfig.endFrame = null;
-  localConfig.images = [];
+  localConfig.mode = previousMode || (newConfig.defaultMode as VideoConfigData["mode"]);
+
+  const resolutionOptions = getResolutionOptions(localConfig.manufacturer, localConfig.model);
+  if (!resolutionOptions.some((item) => item.value === localConfig.resolution)) {
+    localConfig.resolution = newConfig.defaultResolution;
+  }
+
+  const durationOptions = getDurationOptions(localConfig.manufacturer, localConfig.model);
+  if (durationOptions.length > 0) {
+    if (!durationOptions.some((item) => item.value === Number(localConfig.duration || 0))) {
+      localConfig.duration = getDefaultDuration(localConfig.manufacturer, localConfig.model);
+    }
+  } else {
+    const range = getDurationRange(localConfig.manufacturer, localConfig.model);
+    if (Number(localConfig.duration || 0) < range.min || Number(localConfig.duration || 0) > range.max) {
+      localConfig.duration = getDefaultDuration(localConfig.manufacturer, localConfig.model);
+    }
+  }
+
+  if (!getAudioSupport(localConfig.manufacturer, localConfig.model)) {
+    localConfig.audioEnabled = false;
+  }
   emitChange();
 }
 
@@ -434,7 +455,9 @@ onMounted(async () => {
     selectManfactDis.value = false;
   } else {
     // 如果已有 model，确保 manufacturer 和其他配置正确
-    const selectedManufacturer = manufacturerList.value.find((i) => i.manufacturer === localConfig.manufacturer);
+    const selectedManufacturer =
+      manufacturerList.value.find((i) => i.id === localConfig.aiConfigId) ||
+      manufacturerList.value.find((i) => i.manufacturer === localConfig.manufacturer && i.model === localConfig.model);
 
     if (selectedManufacturer) {
       localConfig.aiConfigId = selectedManufacturer.id;
@@ -481,6 +504,13 @@ onMounted(() => {
       margin-left: 8px;
       font-size: 11px;
       color: #9ca3af;
+    }
+
+    .mode-warning {
+      margin-left: 8px;
+      font-size: 11px;
+      color: #ef4444;
+      line-height: 1.5;
     }
 
     &.frame-row {

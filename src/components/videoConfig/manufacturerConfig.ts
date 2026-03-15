@@ -861,6 +861,10 @@ export function getModeOptions(manufacturer: string, model?: string) {
   return getManufacturerConfig(manufacturer, model).modes;
 }
 
+export function isModeSupported(manufacturer: string, model: string | undefined, mode: string): boolean {
+  return getModeOptions(manufacturer, model).some((item) => item.value === mode);
+}
+
 // 获取分辨率标签（支持模型参数）
 export function getResolutionLabel(manufacturer: string, model?: string): string {
   return getManufacturerConfig(manufacturer, model).resolutionLabel;
