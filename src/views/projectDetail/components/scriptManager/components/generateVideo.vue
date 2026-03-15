@@ -9,19 +9,54 @@
         <span>视频配置</span>
         <span v-if="currentConfigs.length" class="count">{{ currentConfigs.length }}</span>
       </div>
-      <button v-if="canGenerate" :disabled="!disableBtn" class="generate-btn" @click="modalShow = true">
-        <i-video-two :size="18" />
-        <span>添加配置</span>
-      </button>
+      <div v-if="canGenerate" class="actions">
+        <button :disabled="!disableBtn" class="generate-btn" @click="modalShow = true">
+          <i-video-two :size="18" />
+          <span>添加配置</span>
+        </button>
+        <button :disabled="!disableBtn" class="generate-btn" style="margin-left: 10px" @click="openAiVideoModal">
+          <i-magic-wand :size="18" />
+          <span>AI视频生成</span>
+        </button>
+        <button :disabled="!disableBtn" class="generate-btn" style="margin-left: 10px" @click="toggleMultiDeleteMode">
+          <span>{{ multiDeleteMode ? "取消多选" : "进入多选删除" }}</span>
+        </button>
+        <template v-if="multiDeleteMode">
+          <button :disabled="!currentConfigs.length" class="generate-btn" style="margin-left: 10px" @click="toggleSelectAllConfigs">
+            {{ selectedConfigIds.length === currentConfigs.length ? "取消全选" : "全选" }}
+          </button>
+          <button
+            :disabled="selectedConfigIds.length === 0"
+            class="generate-btn"
+            style="margin-left: 10px"
+            @click="deleteSelectedConfigs">
+            删除选中({{ selectedConfigIds.length }})
+          </button>
+        </template>
+      </div>
     </div>
 
     <!-- 内容区 -->
     <div class="content">
       <template v-if="currentConfigs.length">
         <div class="video-grid">
-          <div v-for="(config, index) in currentConfigs" :key="config.id" class="video-card" @click="openDetail(config)">
+          <div
+            v-for="(config, index) in currentConfigs"
+            :key="config.id"
+            class="video-card"
+            :class="{ selected: multiDeleteMode && isConfigSelected(config.id) }"
+            @click="handleCardClick(config, $event)">
             <!-- 视频编号 -->
-            <div class="video-index">#{{ index + 1 }}</div>
+            <div class="video-index">
+              <input
+                v-if="multiDeleteMode"
+                type="checkbox"
+                :checked="isConfigSelected(config.id)"
+                class="multi-checkbox"
+                style="margin-right: 8px; cursor: pointer"
+                @click.stop="toggleConfigSelection(config.id)" />
+              <span>#{{ index + 1 }}</span>
+            </div>
 
             <!-- 封面区域 -->
             <div class="cover-wrapper">
@@ -31,6 +66,7 @@
                   <div class="loading-spinner"></div>
                   <span class="status-text">正在生成中...</span>
                   <span class="status-hint">{{ getResultCount(config.id) }}个结果</span>
+                  <button class="refresh-status-btn" @click.stop="refreshRunningStatus(config.id)">刷新状态</button>
                 </div>
               </template>
 
@@ -84,7 +120,7 @@
             </div>
 
             <!-- 删除按钮 -->
-            <button class="delete-btn" @click.stop="handleDeleteConfig(config.id)">
+            <button v-if="!multiDeleteMode" class="delete-btn" @click.stop="handleDeleteConfig(config.id)">
               <i-delete :size="16" />
             </button>
           </div>
@@ -106,6 +142,13 @@
 
     <!-- 视频详情弹窗 -->
     <videoDetail v-if="detailModalShow" v-model="detailModalShow" :configId="currentConfigId" />
+    <storyboardChat
+      v-if="aiVideoModalShow && scriptId && currentProjectId"
+      v-model="aiVideoModalShow"
+      :scriptId="scriptId"
+      :projectId="currentProjectId"
+      mode="video"
+      title="AI视频生成" />
   </div>
 </template>
 
@@ -114,8 +157,10 @@ import { ref, computed } from "vue";
 import { Modal, message } from "ant-design-vue";
 import newVideo from "./generateVideo/newVideo.vue";
 import videoDetail from "./generateVideo/videoDetail.vue";
+import storyboardChat from "./storyboardImage/storyboardChat.vue";
 import videoStore, { type VideoConfig, type VideoResult } from "@/stores/video";
 import { storeToRefs } from "pinia";
+import axios from "@/utils/axios";
 
 const props = defineProps<{
   scriptId: number | null;
@@ -124,11 +169,14 @@ const props = defineProps<{
 }>();
 
 const store = videoStore();
-const { currentConfigs } = storeToRefs(store);
+const { currentConfigs, currentProjectId } = storeToRefs(store);
 
 const modalShow = ref(false);
 const detailModalShow = ref(false);
+const aiVideoModalShow = ref(false);
 const currentConfigId = ref<number | null>(null);
+const multiDeleteMode = ref(false);
+const selectedConfigIds = ref<number[]>([]);
 
 // 厂商标签映射
 const manufacturerLabels: Record<string, string> = {
@@ -163,10 +211,78 @@ function getResultCount(configId: number): number {
   return store.getResultsByConfigId(configId).length;
 }
 
+function isConfigSelected(configId: number): boolean {
+  return selectedConfigIds.value.includes(configId);
+}
+
+function toggleConfigSelection(configId: number): void {
+  const idx = selectedConfigIds.value.indexOf(configId);
+  if (idx === -1) {
+    selectedConfigIds.value.push(configId);
+  } else {
+    selectedConfigIds.value.splice(idx, 1);
+  }
+}
+
+function handleCardClick(config: VideoConfig, event: MouseEvent): void {
+  const target = event.target as HTMLElement | null;
+  const clickedAction = target?.closest(".delete-btn,.multi-checkbox,.refresh-status-btn");
+  if (clickedAction) return;
+
+  if (multiDeleteMode.value) {
+    toggleConfigSelection(config.id);
+    return;
+  }
+
+  openDetail(config);
+}
+
+function toggleMultiDeleteMode(): void {
+  multiDeleteMode.value = !multiDeleteMode.value;
+  if (!multiDeleteMode.value) {
+    selectedConfigIds.value = [];
+  }
+}
+
+function toggleSelectAllConfigs(): void {
+  if (!multiDeleteMode.value) return;
+  const allIds = currentConfigs.value.map((item) => item.id);
+  selectedConfigIds.value = selectedConfigIds.value.length === allIds.length ? [] : allIds;
+}
+
+async function deleteSelectedConfigs(): Promise<void> {
+  if (selectedConfigIds.value.length === 0) {
+    message.warning("请先选择要删除的视频配置");
+    return;
+  }
+  Modal.confirm({
+    title: "确认批量删除",
+    content: `将删除选中的 ${selectedConfigIds.value.length} 条视频配置，是否继续？`,
+    okText: "确定",
+    cancelText: "取消",
+    onOk: async () => {
+      const ids = [...selectedConfigIds.value];
+      try {
+        await store.removeConfig(ids);
+        message.success(`删除成功：${ids.length} 条`);
+      } catch (error: any) {
+        message.error(error?.message || "批量删除失败");
+        return;
+      }
+      selectedConfigIds.value = [];
+      multiDeleteMode.value = false;
+    },
+  });
+}
+
 // 打开详情弹窗
 function openDetail(config: VideoConfig) {
   currentConfigId.value = config.id;
   detailModalShow.value = true;
+}
+
+function openAiVideoModal(): void {
+  aiVideoModalShow.value = true;
 }
 
 // 删除配置
@@ -176,11 +292,41 @@ function handleDeleteConfig(configId: number) {
     content: "删除配置后，关联的所有生成结果也会被删除，确定要删除吗？",
     okText: "确定",
     cancelText: "取消",
-    onOk() {
-      store.removeConfig(configId);
+    onOk: async () => {
+      await store.removeConfig(configId);
       message.success("删除成功");
     },
   });
+}
+
+async function refreshRunningStatus(configId: number) {
+  if (!props.scriptId) {
+    message.warning("无效的剧本ID");
+    return;
+  }
+  const runningIds = store
+    .getResultsByConfigId(configId)
+    .filter((item) => item.state === 0)
+    .map((item) => item.id);
+  if (runningIds.length === 0) {
+    message.info("当前没有生成中的任务");
+    return;
+  }
+  try {
+    const res = await axios.post("/video/refreshVideoStatus", {
+      scriptId: props.scriptId,
+      specifyIds: runningIds,
+    });
+    const data = res?.data?.data || {};
+    await store.fetchVideoData(props.scriptId, runningIds);
+    if (data.refreshed > 0 && data.unsupported === data.refreshed) {
+      message.warning("当前模型暂不支持远端刷新，已仅刷新本地状态");
+    } else {
+      message.success("状态已刷新");
+    }
+  } catch (error: any) {
+    message.error(error?.message || "刷新状态失败");
+  }
 }
 </script>
 
@@ -226,6 +372,11 @@ function handleDeleteConfig(configId: number) {
         font-size: 13px;
         font-weight: 500;
       }
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
     }
 
     .generate-btn {
@@ -299,6 +450,11 @@ function handleDeleteConfig(configId: number) {
         }
       }
 
+      &.selected {
+        border-color: #9333ea;
+        box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2);
+      }
+
       .video-index {
         position: absolute;
         top: 10px;
@@ -315,6 +471,8 @@ function handleDeleteConfig(configId: number) {
         font-size: 12px;
         font-weight: 600;
         z-index: 10;
+        display: inline-flex;
+        align-items: center;
       }
 
       .delete-btn {
@@ -437,6 +595,17 @@ function handleDeleteConfig(configId: number) {
             .status-hint {
               color: #9ca3af;
               font-size: 12px;
+            }
+
+            .refresh-status-btn {
+              margin-top: 8px;
+              padding: 4px 10px;
+              font-size: 12px;
+              border: 1px solid #8f56ff;
+              border-radius: 12px;
+              background: #fff;
+              color: #7c3aed;
+              cursor: pointer;
             }
           }
 

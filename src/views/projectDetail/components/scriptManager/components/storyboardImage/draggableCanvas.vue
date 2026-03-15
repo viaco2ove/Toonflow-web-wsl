@@ -91,12 +91,13 @@ function editImage(cell, segmentId) {
   editorRef.value.doFusionEdit({
     id: -1,
     filePath: cell.src,
-    otherImgs: [],
-    prompt: cell.prompt,
-    editPrompt: "@图1 进行细节优化",
+    otherImgs: Array.isArray(cell.otherImgs) ? cell.otherImgs : [],
+    prompt: cell.prompt || "",
+    editPrompt: cell.editPrompt || "@图1 进行细节优化",
     intro: "",
     scriptId: -1,
-    generateImg: [],
+    generateImg: Array.isArray(cell.generateImg) ? cell.generateImg : [],
+    selectedResultId: Number.isFinite(Number(cell.selectedResultId)) ? Number(cell.selectedResultId) : -1,
   });
 }
 
@@ -107,8 +108,20 @@ async function saveImage(data) {
       if (item.segmentId === clickOption.segmentId) {
         const updatedCells = item.cells.map((cell) => {
           if (cell.id === clickOption.cellId) {
-            cellData = { ...cell, src: data.filePath };
-            return { ...cell, src: data.filePath };
+            cellData = {
+              ...cell,
+              src: data.filePath,
+              prompt: typeof data.prompt === "string" ? data.prompt : cell.prompt,
+              editPrompt: typeof data.editPrompt === "string" ? data.editPrompt : cell.editPrompt || "",
+              otherImgs: Array.isArray(data.otherImgs) ? data.otherImgs : Array.isArray(cell.otherImgs) ? cell.otherImgs : [],
+              generateImg: Array.isArray(data.generateImg) ? data.generateImg : Array.isArray(cell.generateImg) ? cell.generateImg : [],
+              selectedResultId: Number.isFinite(Number(data.selectedResultId))
+                ? Number(data.selectedResultId)
+                : Number.isFinite(Number(cell.selectedResultId))
+                  ? Number(cell.selectedResultId)
+                  : -1,
+            };
+            return cellData;
           }
           return cell;
         });

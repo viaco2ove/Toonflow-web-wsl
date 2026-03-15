@@ -12,7 +12,7 @@
     <template #title>
       <div class="ac jb titHeader" style="background: #f9faff; height: 60px; display: flex; width: 100%">
         <div>
-          <span style="font-weight: bold; font-size: 18px; margin-left: 24px">分镜图生成</span>
+          <span style="font-weight: bold; font-size: 18px; margin-left: 24px">{{ modalTitle }}</span>
         </div>
         <div class="closePoint" @click="cancelModal">
           <i-close theme="outline" size="18" fill="#9913FA" />
@@ -20,16 +20,22 @@
       </div>
     </template>
     <div class="content pr">
-      <draggableCanvas v-model="gridData" :generatingIds="generatingIds" @replaceShot="replaceShot" @generateImage="handleGenerateImage" />
-      <div class="chatBox pa" :class="{ hoverState: gridData.length > 0 }">
+      <draggableCanvas
+        v-if="props.mode !== 'video'"
+        v-model="gridData"
+        :generatingIds="generatingIds"
+        @replaceShot="replaceShot"
+        @generateImage="handleGenerateImage" />
+      <div class="chatBox pa" :class="{ hoverState: gridData.length > 0, videoMode: props.mode === 'video' }">
         <chat ref="chatRef" :canSend="canSend" enterToSend :sendApi="sendApi" v-model="history" />
         <div class="f ac jb">
           <div></div>
-          <a-button class="btn" type="primary" @click="exportAll">导出全部镜头({{ imageNumber }})</a-button>
+          <a-button v-if="props.mode !== 'video'" class="btn" type="primary" @click="exportAll">导出全部镜头({{ imageNumber }})</a-button>
         </div>
       </div>
     </div>
     <detectionImage
+      v-if="props.mode !== 'video'"
       ref="detectionImageRef"
       v-model:detectionImageShow="detectionImageShow"
       v-model:imageData="imageData"
@@ -46,6 +52,7 @@ import { v4 as uuidv4 } from "uuid";
 import WsClient from "@/utils/wsClient";
 import { message as antMessage, message, Modal } from "ant-design-vue";
 import detectionImage from "./detectionImage.vue";
+import videoStore from "@/stores/video";
 
 type ImageDataItem = {
   id: string;
@@ -75,6 +82,8 @@ const imageNumber = computed(() => {
 const props = defineProps<{
   projectId: number;
   scriptId?: number | null;
+  mode?: "storyboard" | "video";
+  title?: string;
 }>();
 
 const modalShow = defineModel({
@@ -89,6 +98,48 @@ const imageData = ref<ImageDataItem[]>([]);
 const detectionImageRef = ref<InstanceType<typeof detectionImage> | null>(null);
 
 const emit = defineEmits(["save"]);
+const videoStoreInstance = videoStore();
+const modalTitle = computed(() => {
+  if (props.title) return props.title;
+  return props.mode === "video" ? "AI视频生成" : "分镜图生成";
+});
+const isVideoMode = computed(() => props.mode === "video" || props.title === "AI视频生成");
+const sessionStorageKey = computed(() => {
+  const script = Number(props.scriptId || 0);
+  return `storyboard-chat-session:${props.projectId}:${script}:${isVideoMode.value ? "video" : "storyboard"}`;
+});
+
+function createWelcomeMessage(): AssistantMessage {
+  return {
+    id: uuidv4(),
+    identity: "assistant",
+    role: "助手",
+    data: [
+      {
+        type: "textWithConfirm",
+        text: "欢迎使用Toonflow！我已经收到你的剧本与相关资产,请和我说“开始”启动生成分镜图的制作吧！",
+        button: [{ text: "开始制作", type: "primary" }],
+        confirm: undefined,
+      },
+    ],
+  };
+}
+
+function getStoredSessionId(): string {
+  try {
+    return String(localStorage.getItem(sessionStorageKey.value) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function setStoredSessionId(id: string): void {
+  const value = String(id || "").trim();
+  if (!value) return;
+  try {
+    localStorage.setItem(sessionStorageKey.value, value);
+  } catch {}
+}
 
 let ws: WsClient | null = null;
 let flagQuit = false;
@@ -103,19 +154,7 @@ const aiMsgIdentity: Record<string, string> = {
   main: "助手",
 };
 
-const history = ref<ChatMessage[]>([
-  {
-    id: uuidv4(),
-    identity: "assistant",
-    role: "助手",
-    data: [
-      {
-        type: "text",
-        text: "欢迎使用Toonflow！我已经收到你的剧本与相关资产,请和我说“开始”启动生成分镜图的制作吧！",
-      },
-    ],
-  },
-]);
+const history = ref<ChatMessage[]>([createWelcomeMessage()]);
 const canSend = ref(true);
 
 // Tool 名称映射为可读文本（与后端工具对应）
@@ -208,7 +247,17 @@ function appendToStream(text: string) {
 
 // 初始化 WebSocket 连接
 function initWsClient() {
-  const url = `/storyboard/chatStoryboard?projectId=${props.projectId}${props.scriptId ? `&scriptId=${props.scriptId}` : ""}`;
+  if (!props.scriptId) {
+    antMessage.warning("缺少 scriptId，无法建立会话连接");
+    return;
+  }
+  const params = new URLSearchParams();
+  params.set("projectId", String(props.projectId));
+  params.set("scriptId", String(props.scriptId));
+  if (isVideoMode.value) params.set("mode", "video");
+  const storedSessionId = getStoredSessionId();
+  if (storedSessionId) params.set("sessionId", storedSessionId);
+  const url = `/storyboard/chatStoryboard?${params.toString()}`;
 
   ws = new WsClient(url, {
     onOpen: () => {
@@ -243,6 +292,36 @@ function initWsClient() {
   });
 }
 
+function applySessionHistory(rawHistory: any) {
+  const list = Array.isArray(rawHistory) ? rawHistory : [];
+  const mapped: ChatMessage[] = list
+    .map((item: any) => {
+      const role = String(item?.role || "assistant").trim();
+      const content = String(item?.content || "").trim();
+      if (!content) return null;
+      if (role === "user") {
+        return {
+          id: uuidv4(),
+          identity: "user",
+          data: [{ type: "text", text: content }],
+        } as UserMessage;
+      }
+      return {
+        id: uuidv4(),
+        identity: "assistant",
+        role: "助手",
+        data: [{ type: "text", text: content }],
+      } as AssistantMessage;
+    })
+    .filter(Boolean) as ChatMessage[];
+
+  // 若用户已输入新消息（等待 init 期间），避免覆盖本地消息。
+  const hasLocalUserMessage = history.value.some((item) => item.identity === "user");
+  if (hasLocalUserMessage) return;
+  history.value = mapped.length ? mapped : [createWelcomeMessage()];
+  chatRef.value?.scrollBottom();
+}
+
 // 处理 WebSocket 消息
 function handleWsMessage(msgData: { type: string; data: any }) {
   // 只有 AI 响应相关的消息才移除 thinking 消息
@@ -253,15 +332,22 @@ function handleWsMessage(msgData: { type: string; data: any }) {
 
   const messageHandlers: Record<string, (data: any) => void> = {
     // 初始化完成
-    init: () => {
+    init: (data) => {
       console.log("WebSocket 初始化完成");
       wsInitialized = true;
+      const nextSessionId = String(data.data?.currentSessionId || "").trim();
+      if (nextSessionId) setStoredSessionId(nextSessionId);
       // 如果有待发送的消息，现在发送
       if (pendingMessage) {
         console.log("发送待处理的消息:", pendingMessage);
         ws?.send(pendingMessage);
         pendingMessage = null;
       }
+    },
+
+    // 会话历史（后端 session store）
+    sessionHistory: (data) => {
+      applySessionHistory(data.data?.history);
     },
 
     // 主 Agent 流式传输
@@ -301,6 +387,10 @@ function handleWsMessage(msgData: { type: string; data: any }) {
     // 刷新数据
     refresh: (data) => {
       console.log("Refresh:", data.data);
+      if (isVideoMode.value && data.data === "videoConfigs" && props.scriptId) {
+        void videoStoreInstance.fetchVideoConfigs(Number(props.scriptId));
+        void videoStoreInstance.fetchVideoData(Number(props.scriptId));
+      }
     },
 
     // 片段数据更新
@@ -520,21 +610,7 @@ function cleanHistory() {
     ws.send({ type: "cleanHistory", data: null });
   }
   // 重置历史消息
-  history.value = [
-    {
-      id: uuidv4(),
-      identity: "assistant",
-      role: "助手",
-      data: [
-        {
-          type: "textWithConfirm",
-          text: "欢迎使用Toonflow！我已经收到你的剧本与相关资产,请和我说“开始”启动生成分镜图的制作吧！",
-          button: [{ text: "开始制作", type: "primary" }],
-          confirm: undefined,
-        },
-      ],
-    },
-  ];
+  history.value = [createWelcomeMessage()];
 }
 
 // 关闭弹窗
@@ -822,6 +898,10 @@ function test() {
     .btn {
       margin-top: 10px;
     }
+  }
+  .chatBox.videoMode {
+    width: calc(100% - 20px);
+    right: 10px;
   }
   // .hoverState {
   //   transform: translateX(300px);

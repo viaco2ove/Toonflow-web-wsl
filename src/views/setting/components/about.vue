@@ -24,7 +24,7 @@
     </t-card>
 
     <t-card class="linkCard">
-      <div class="linkItem" @click="openLink('https://github.com/HBAI-Ltd/Toonflow-app/releases')">
+      <div class="linkItem" @click="openLink('https://github.com/viaco2ove/Toonflow-web-wsl/releases')">
         <i-refresh theme="outline" size="20" />
         <span>检查更新 (GitHub)</span>
         <i-right theme="outline" size="16" class="arrow" />

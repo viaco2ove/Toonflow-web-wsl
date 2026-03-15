@@ -239,23 +239,32 @@ export default defineStore(
       return newConfig;
     }
 
-    // 删除配置
-    async function removeConfig(configId: number) {
-      // 调用后端接口删除配置（包括文件和视频）
+    // 删除配置（支持单个和批量）
+    async function removeConfig(configId: number | number[]) {
+      const ids = Array.isArray(configId) ? configId : [configId];
+      if (ids.length === 0) return;
+
       try {
-        await axios.post("/video/deleteVideoConfig", { id: configId });
+        await axios.post("/video/deleteVideoConfig", ids.length === 1 ? { id: ids[0] } : { ids });
       } catch (error) {
-        console.error("删除配置失败:", error);
-        throw error;
+        // 某些后端版本只支持单个删除，批量时降级逐个删除
+        if (ids.length > 1) {
+          try {
+            await Promise.all(ids.map((id) => axios.post("/video/deleteVideoConfig", { id })));
+          } catch (batchError) {
+            console.error("删除配置失败:", batchError);
+            throw batchError;
+          }
+        } else {
+          console.error("删除配置失败:", error);
+          throw error;
+        }
       }
 
       // 删除本地 store 中的数据
-      const index = videoConfigs.value.findIndex((c) => c.id === configId);
-      if (index !== -1) {
-        videoConfigs.value.splice(index, 1);
-        // 同时删除关联的结果
-        videoResults.value = videoResults.value.filter((r) => r.configId !== configId);
-      }
+      videoConfigs.value = videoConfigs.value.filter((c) => !ids.includes(c.id));
+      // 同时删除关联的结果
+      videoResults.value = videoResults.value.filter((r) => !ids.includes(r.configId));
     }
 
     // 生成视频（单个配置）

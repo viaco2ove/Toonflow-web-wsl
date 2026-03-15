@@ -352,6 +352,7 @@ const websites = ref<Record<string, string>>({
   anthropic: "",
   runninghub: "https://www.runninghub.cn/enterprise-api/consumerApi",
   gemini: "https://ai.google.dev/gemini-api/docs/api-key?hl=zh-cn",
+  t8star: "https://ai.t8star.cn",
 });
 
 const currentWebsite = computed(() => {
@@ -371,6 +372,7 @@ const manufacturerNames: Record<string, string> = {
   anthropic: "Anthropic",
   runninghub: "RunningHUB",
   gemini: "Gemini",
+  t8star: "T8Star",
   other: "其他",
 };
 
@@ -409,6 +411,9 @@ const manufacturerDefaultBaseUrls: Record<string, Record<string, string>> = {
   },
   gemini: {
     text: "https://generativelanguage.googleapis.com",
+  },
+  t8star: {
+    text: "https://ai.t8star.cn/v1",
   },
 };
 

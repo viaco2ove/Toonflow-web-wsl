@@ -83,8 +83,8 @@
 
       <!-- 中间面板 - 生成结果 -->
       <a-flex vertical class="middle-panel">
-        <a-card title="镜头提示词" :bordered="false" size="small" style="margin-bottom: 20px" v-if="mockStoryboard.prompt">
-          {{ mockStoryboard.prompt }}
+        <a-card title="镜头提示词" :bordered="false" size="small" style="margin-bottom: 20px">
+          <a-textarea v-model:value="mockStoryboard.prompt" :rows="3" placeholder="请输入镜头提示词" />
         </a-card>
         <a-card title="生成结果" :bordered="false" size="small">
           <template v-if="mockStoryboard.generateImg && mockStoryboard.generateImg.length > 0">
@@ -174,6 +174,7 @@ interface Storyboard {
   editPrompt: string;
   intro: string;
   generateImg: GenerateImg[];
+  selectedResultId?: number;
 }
 
 withDefaults(
@@ -188,7 +189,17 @@ withDefaults(
 );
 
 const emit = defineEmits<{
-  save: [data: { id: number; filePath: string; prompt: string }];
+  save: [
+    data: {
+      id: number;
+      filePath: string;
+      prompt: string;
+      editPrompt: string;
+      otherImgs: OtherImg[];
+      generateImg: GenerateImg[];
+      selectedResultId: number;
+    },
+  ];
 }>();
 
 const { projectId } = storeToRefs(store());
@@ -346,8 +357,16 @@ async function doMerge(): Promise<void> {
 
 function doFusionEdit(storyboard: Storyboard): void {
   mockStoryboard.value = JSON.parse(JSON.stringify(storyboard));
-  mockStoryboard.value.generateImg = [{ filePath: mockStoryboard.value.filePath }, ...(mockStoryboard.value.generateImg || [])];
-  resultSelectedIndex.value = mockStoryboard.value.generateImg.findIndex((item) => item.filePath === storyboard.filePath);
+  mockStoryboard.value.prompt = typeof mockStoryboard.value.prompt === "string" ? mockStoryboard.value.prompt : "";
+  mockStoryboard.value.editPrompt = typeof mockStoryboard.value.editPrompt === "string" ? mockStoryboard.value.editPrompt : "@图1 进行细节优化";
+  mockStoryboard.value.otherImgs = Array.isArray(mockStoryboard.value.otherImgs) ? mockStoryboard.value.otherImgs : [];
+  mockStoryboard.value.generateImg = [{ filePath: mockStoryboard.value.filePath }, ...(Array.isArray(mockStoryboard.value.generateImg) ? mockStoryboard.value.generateImg : [])];
+  resultSelectedIndex.value = Number.isFinite(Number(mockStoryboard.value.selectedResultId))
+    ? Number(mockStoryboard.value.selectedResultId)
+    : mockStoryboard.value.generateImg.findIndex((item) => item.filePath === storyboard.filePath);
+  if (resultSelectedIndex.value < 0) {
+    resultSelectedIndex.value = 0;
+  }
   modelValue.value = true;
 }
 
@@ -361,6 +380,10 @@ function handleSaveFirstFrame(): void {
     id: mockStoryboard.value.id,
     filePath: mockStoryboard.value.generateImg[resultSelectedIndex.value].filePath,
     prompt: mockStoryboard.value.prompt,
+    editPrompt: mockStoryboard.value.editPrompt,
+    otherImgs: Array.isArray(mockStoryboard.value.otherImgs) ? mockStoryboard.value.otherImgs : [],
+    generateImg: Array.isArray(mockStoryboard.value.generateImg) ? mockStoryboard.value.generateImg : [],
+    selectedResultId: resultSelectedIndex.value,
   });
   modelValue.value = false;
 }

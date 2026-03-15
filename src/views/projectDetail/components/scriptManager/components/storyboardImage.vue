@@ -9,21 +9,51 @@
         <span>生成分镜图</span>
         <span v-if="data.length" class="count">{{ data.length }}</span>
       </div>
-      <button v-if="canGenerate" :disabled="!disableBtn" class="generate-btn" @click="modalShow = true">
-        <i-optimize :size="18" />
-        <span>生成分镜图</span>
-      </button>
+      <div v-if="canGenerate" class="actions">
+        <button :disabled="!disableBtn" class="generate-btn" @click="modalShow = true">
+          <i-optimize :size="18" />
+          <span>生成分镜图</span>
+        </button>
+        <button :disabled="!disableBtn" class="generate-btn" style="margin-left: 10px" @click="toggleMultiDeleteMode">
+          <span>{{ multiDeleteMode ? "取消多选" : "进入多选删除" }}</span>
+        </button>
+        <template v-if="multiDeleteMode">
+          <button :disabled="!data.length" class="generate-btn" style="margin-left: 10px" @click="toggleSelectAll">
+            {{ selectedStoryboardIds.length === data.length ? "取消全选" : "全选" }}
+          </button>
+          <button
+            :disabled="selectedStoryboardIds.length === 0"
+            class="generate-btn"
+            style="margin-left: 10px"
+            @click="deleteSelectedStoryboards">
+            删除选中({{ selectedStoryboardIds.length }})
+          </button>
+        </template>
+      </div>
     </div>
 
     <!-- 内容区 -->
     <div class="content">
       <template v-if="data.length">
         <div class="image-grid">
-          <div v-for="(item, index) in data" :key="item.id" class="image-card" @click="handleEdit(item)">
+          <div
+            v-for="item in data"
+            :key="item.id"
+            class="image-card"
+            :class="{ selected: multiDeleteMode && isStoryboardSelected(item.id) }"
+            @click="handleCardClick(item)">
             <!-- 序号标签 -->
-            <div class="shot-badge">片段{{ item.segmentId }}-{{ item.shotIndex }}镜头</div>
+            <div class="shot-badge">
+              <input
+                v-if="multiDeleteMode"
+                type="checkbox"
+                :checked="isStoryboardSelected(item.id)"
+                class="multi-checkbox"
+                @click.stop="toggleStoryboardSelection(item.id)" />
+              <span>片段{{ item.segmentId }}-{{ item.shotIndex }}镜头</span>
+            </div>
             <!-- 删除分镜图 -->
-            <div class="delStoryboards" @click.stop="delStoryboardsFn(item.id, index, $event)">
+            <div v-if="!multiDeleteMode" class="delStoryboards" @click.stop="delStoryboardsFn(item.id)">
               <i-delete :size="16" />
             </div>
             <!-- 封面区域 -->
@@ -86,11 +116,14 @@ interface Storyboard {
   name: string;
   intro: string;
   prompt: string;
+  editPrompt?: string;
+  otherImgs?: { id: number; filePath: string }[];
+  selectedResultId?: number;
   filePath: string;
   duration: number;
   segmentId: number; // 片段ID
   shotIndex: number; // 镜头在片段内的序号
-  generateImg: { assetsId: number; filePath: string }[];
+  generateImg: { id?: number; assetsId?: number; filePath: string }[];
 }
 
 const emit = defineEmits(["save"]);
@@ -104,17 +137,28 @@ const props = defineProps<{
 
 const modalShow = ref(false);
 const storyboardEditorRef = ref<InstanceType<typeof storyboardEditor> | null>(null);
+const multiDeleteMode = ref(false);
+const selectedStoryboardIds = ref<number[]>([]);
+
+function handleCardClick(item: Storyboard) {
+  if (multiDeleteMode.value) {
+    toggleStoryboardSelection(item.id);
+    return;
+  }
+  handleEdit(item);
+}
 
 function handleEdit(item: Storyboard) {
   storyboardEditorRef.value?.doFusionEdit({
     id: item.id,
     filePath: item.filePath,
     scriptId: props.scriptId ?? undefined,
-    otherImgs: [],
+    otherImgs: Array.isArray(item.otherImgs) ? item.otherImgs : [],
     prompt: item.prompt || "",
     intro: item.intro || "",
-    generateImg: item.generateImg || [],
-    editPrompt: "",
+    generateImg: Array.isArray(item.generateImg) ? item.generateImg : [],
+    editPrompt: item.editPrompt || "",
+    selectedResultId: Number.isFinite(Number(item.selectedResultId)) ? Number(item.selectedResultId) : undefined,
   });
 }
 
@@ -123,7 +167,7 @@ function handelrEditSave(data: any) {
     emit("save");
   });
 }
-function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
+function delStoryboardsFn(id: number) {
   Modal.confirm({
     title: "确认删除",
     content: `确定要删除分镜图吗？`,
@@ -135,6 +179,59 @@ function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
         emit("save");
         message.success("删除成功");
       });
+    },
+  });
+}
+
+function toggleMultiDeleteMode() {
+  multiDeleteMode.value = !multiDeleteMode.value;
+  if (!multiDeleteMode.value) {
+    selectedStoryboardIds.value = [];
+  }
+}
+
+function toggleSelectAll() {
+  if (!multiDeleteMode.value) return;
+  const allIds = props.data.map((item) => item.id);
+  selectedStoryboardIds.value = selectedStoryboardIds.value.length === allIds.length ? [] : allIds;
+}
+
+function isStoryboardSelected(id: number) {
+  return selectedStoryboardIds.value.includes(id);
+}
+
+function toggleStoryboardSelection(id: number) {
+  const idx = selectedStoryboardIds.value.indexOf(id);
+  if (idx === -1) {
+    selectedStoryboardIds.value.push(id);
+  } else {
+    selectedStoryboardIds.value.splice(idx, 1);
+  }
+}
+
+function deleteSelectedStoryboards() {
+  if (selectedStoryboardIds.value.length === 0) {
+    message.warning("请先选择要删除的分镜");
+    return;
+  }
+  Modal.confirm({
+    title: "确认删除",
+    content: `将删除选中的 ${selectedStoryboardIds.value.length} 条分镜，是否继续？`,
+    okText: "确定",
+    cancelText: "取消",
+    onOk: async () => {
+      const ids = [...selectedStoryboardIds.value];
+      try {
+        const res = await axios.post("/storyboard/delStoryboard", { ids });
+        const deletedCount = Number(res?.data?.deletedCount) || ids.length;
+        message.success(`删除成功：${deletedCount} 条`);
+      } catch (error: any) {
+        message.error(error?.message || "批量删除失败");
+        return;
+      }
+      selectedStoryboardIds.value = [];
+      multiDeleteMode.value = false;
+      emit("save");
     },
   });
 }
@@ -184,6 +281,11 @@ function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
       }
     }
 
+    .actions {
+      display: flex;
+      align-items: center;
+    }
+
     .generate-btn {
       display: flex;
       align-items: center;
@@ -225,7 +327,7 @@ function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
       gap: 24px;
     }
 
-    .image-card {
+      .image-card {
       position: relative;
       background: #fff;
       border-radius: 16px;
@@ -253,6 +355,11 @@ function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
         }
       }
 
+      &.selected {
+        border-color: #9333ea;
+        box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2);
+      }
+
       .shot-badge {
         position: absolute;
         top: 12px;
@@ -265,6 +372,14 @@ function delStoryboardsFn(id: number, index: number, event: MouseEvent) {
         font-size: 13px;
         font-weight: 600;
         box-shadow: 0 2px 8px rgba(147, 51, 234, 0.4);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+
+        .multi-checkbox {
+          margin: 0;
+          cursor: pointer;
+        }
       }
       .delStoryboards {
         position: absolute;

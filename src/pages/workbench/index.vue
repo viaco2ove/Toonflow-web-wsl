@@ -45,7 +45,7 @@ const collapsIcon = computed(() => (collapsed.value ? "chevron-right" : "chevron
 const router = useRouter();
 const route = useRoute();
 const activeMenu = ref(route.path);
-const collapsed = ref(true);
+const collapsed = ref(false);
 
 function handleClick(value: string | number) {
   const path = String(value);

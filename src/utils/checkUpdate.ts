@@ -2,8 +2,10 @@
  * 检查 GitHub 最新版本并与本地版本对比
  */
 
-const GITHUB_API_URL = 'https://api.github.com/repos/HBAI-Ltd/Toonflow-app/tags';
-const RELEASE_URL = 'https://github.com/HBAI-Ltd/Toonflow-app/releases';
+const GITHUB_API_URL = 'https://api.github.com/repos/viaco2ove/Toonflow-web-wsl/tags';
+const RELEASE_URL = 'https://github.com/viaco2ove/Toonflow-web-wsl/releases';
+const LAST_CHECK_TS_KEY = 'toonflow_last_update_check_ts';
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateInfo {
   hasUpdate: boolean;
@@ -45,7 +47,7 @@ async function fetchLatestTag(): Promise<string | null> {
   try {
     const response = await fetch(GITHUB_API_URL);
     if (!response.ok) {
-      console.error('Failed to fetch tags:', response.statusText);
+      // GitHub 未鉴权或频率受限时常见 403，这里静默降级，不影响主流程。
       return null;
     }
 
@@ -59,9 +61,27 @@ async function fetchLatestTag(): Promise<string | null> {
     }
     return null;
   } catch (error) {
-    console.error('Error fetching latest tag:', error);
+    // 网络异常静默处理，避免在控制台制造红色噪音。
     return null;
   }
+}
+
+/**
+ * 是否执行更新检查
+ * - 默认仅生产环境执行
+ * - 24 小时内最多检查一次
+ */
+export function shouldCheckForUpdate(): boolean {
+  if (!import.meta.env.PROD) return false;
+  try {
+    const now = Date.now();
+    const last = Number(localStorage.getItem(LAST_CHECK_TS_KEY) || 0);
+    if (Number.isFinite(last) && last > 0 && now - last < CHECK_INTERVAL_MS) return false;
+    localStorage.setItem(LAST_CHECK_TS_KEY, String(now));
+  } catch {
+    // localStorage 不可用时，不阻断检查
+  }
+  return true;
 }
 
 /**

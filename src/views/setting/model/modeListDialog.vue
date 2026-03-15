@@ -144,7 +144,8 @@ const websites = ref<Record<string, string>>({
   anthropic: "",
   runninghub: "https://www.runninghub.cn/enterprise-api/consumerApi",
   gemini: "https://ai.google.dev/gemini-api/docs/api-key?hl=zh-cn",
-  grsai:"https://grsai.ai/zh/dashboard/api-keys"
+  t8star: "https://ai.t8star.cn",
+  grsai: "https://grsai.ai/zh/dashboard/api-keys",
 });
 
 const currentWebsite = computed(() => {
@@ -164,6 +165,7 @@ const manufacturerNames: Record<string, string> = {
   anthropic: "Anthropic",
   runninghub: "RunningHUB",
   gemini: "Gemini",
+  t8star: "T8Star",
   modelScope: "魔塔",
   xai: "XAI",
   grsai: "Grsai",
@@ -184,6 +186,7 @@ function getManufacturerColor(manufacturer: string): string {
     anthropic: "volcano",
     runninghub: "gold",
     gemini: "lime",
+    t8star: "blue",
     modelScope: "#634BFE",
     xai: "red",
     grsai: "#2B7FFF",
@@ -251,6 +254,11 @@ const manufacturerDefaultBaseUrls: Record<string, Record<string, string>> = {
     text: "",
     image: "",
     video: "",
+  },
+  t8star: {
+    text: "https://ai.t8star.cn/v1",
+    image: "",
+    video: "https://ai.t8star.cn/v2/videos/generations|https://ai.t8star.cn/v2/videos/generations/{taskId}",
   },
   modelScope: {
     text: "https://api-inference.modelscope.cn/v1",

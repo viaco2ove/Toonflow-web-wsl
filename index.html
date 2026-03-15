@@ -451,6 +451,23 @@
           }
         }
 
+        function findSidebarButtonByLabel(text) {
+          const target = safeText(text).replace(/\s+/g, "");
+          const selectors = ['.sidebarNav .sidebarBtn', '.sidebarFooter .sidebarBtn', '[role="menuitem"]', ".t-menu__item", ".t-menu-item", "button"];
+          const nodes = Array.from(document.querySelectorAll(selectors.join(",")));
+          const candidates = nodes
+            .filter((el) => {
+              const raw = safeText(el.textContent).trim();
+              if (!raw) return false;
+              const normalized = raw.replace(/\s+/g, "");
+              if (normalized !== target && !normalized.includes(target)) return false;
+              const rect = el.getBoundingClientRect();
+              return rect.left < 320 && rect.top > 20 && rect.top < window.innerHeight - 20 && rect.width > 36 && rect.height > 20;
+            })
+            .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          return candidates[0] || null;
+        }
+
         function findSidebarLabel(text) {
           const target = safeText(text).replace(/\s+/g, "");
           const candidates = Array.from(document.querySelectorAll("*")).filter((el) => {
@@ -461,7 +478,7 @@
           });
           return candidates.find((el) => {
             const rect = el.getBoundingClientRect();
-            return rect.left < 260 && rect.width > 30 && rect.width < 220 && rect.height < 70 && rect.top > 80;
+            return rect.left < 260 && rect.width > 24 && rect.width < 260 && rect.height < 90 && rect.top > 20;
           }) || null;
         }
 
@@ -471,12 +488,24 @@
           let node = label;
           while (node && node !== document.body) {
             const rect = node.getBoundingClientRect();
-            if (rect.left < 260 && rect.width >= 180 && rect.width <= 340 && rect.height >= 42 && rect.height <= 120) {
+            if (rect.left < 260 && rect.width >= 120 && rect.width <= 360 && rect.height >= 24 && rect.height <= 120) {
               return node;
             }
             node = node.parentElement;
           }
           return label.closest("div");
+        }
+
+        function findTopSidebarMenuRow() {
+          const selectors = ['.sidebarNav .sidebarBtn', '[role="menuitem"]', ".t-menu__item", ".t-menu-item"];
+          const nodes = Array.from(document.querySelectorAll(selectors.join(",")));
+          const candidates = nodes
+            .filter((el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.left < 260 && rect.top > 20 && rect.top < window.innerHeight * 0.65 && rect.width > 36 && rect.height > 20;
+            })
+            .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          return candidates[0] || null;
         }
 
         function bindEntryClick(entry) {
@@ -494,9 +523,10 @@
         }
 
         function injectSidebarEntry() {
-          const projectRow = findSidebarRowByLabel("我的项目");
-          const settingRow = findSidebarRowByLabel("设置");
-          const anchorRow = projectRow || settingRow;
+          const projectRow = findSidebarButtonByLabel("我的项目") || findSidebarRowByLabel("我的项目");
+          const topMenuRow = findTopSidebarMenuRow();
+          const settingRow = findSidebarButtonByLabel("设置") || findSidebarRowByLabel("设置");
+          const anchorRow = projectRow || topMenuRow || settingRow;
           if (!anchorRow || !anchorRow.parentNode) return;
 
           const oldEntry = document.getElementById("chat-history-side-entry");
@@ -510,6 +540,10 @@
           entry.id = "chat-history-side-entry";
           replaceTextNode(entry, "我的项目", "会话记录");
           replaceTextNode(entry, "设置", "会话记录");
+          if (!safeText(entry.textContent).includes("会话记录")) {
+            const firstText = entry.querySelector("span");
+            if (firstText) firstText.textContent = "会话记录";
+          }
           bindEntryClick(entry);
 
           const parent = anchorRow.parentNode;

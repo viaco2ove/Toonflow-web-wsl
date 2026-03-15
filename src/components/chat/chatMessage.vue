@@ -1,31 +1,77 @@
 <template>
-  <!-- 通知消息 -->
   <div v-if="msg.identity === 'notice'" class="notice-message">
     <span class="notice-text">{{ msg.data }}</span>
   </div>
 
-  <!-- 对话消息 -->
   <div v-else class="message-wrapper" :class="[msg.identity === 'user' ? 'user' : 'assistant']">
-    <!-- 消息内容 -->
+    <div class="avatar" v-if="msg.identity === 'assistant'">
+      <img class="assistant-logo" :src="logo" alt="assistant-logo" />
+    </div>
+
     <div class="message-content-wrapper">
+      <div v-if="msg.identity === 'assistant'" class="assistant-role">{{ msg.role || "助手" }}</div>
       <template v-if="msg.identity === 'assistant' && parsedData">
-        <div v-for="item in parsedData" :key="item.index">
-          <McBubble v-if="item.type === 'text'" :avatarConfig="{ imgSrc: logo, displayName: msg.role }" :avatarPosition="'top'" :variant="'bordered'">
-            <McMarkdownCard :enableThink="true" :content="item.content" :theme="theme"></McMarkdownCard>
-          </McBubble>
-          <McBubble
-            v-if="item.type === 'thinking'"
-            :loading="true"
-            :avatarConfig="{ imgSrc: logo, displayName: msg.role }"
-            :avatarPosition="'top'"></McBubble>
+        <div v-for="item in parsedData" :key="item.index" class="message-bubble assistant-bubble">
+          <template v-if="item.type === 'text'">
+            <div v-if="item.thinking" class="thinking-block">
+              <div class="thinking-block-header" @click="toggleThinking(item.index)">
+                <span class="thinking-icon">💭</span>
+                <span class="thinking-title">思考过程</span>
+                <span class="thinking-toggle" :class="{ collapsed: isCollapsed(item.index) }">
+                  <DownOutlined />
+                </span>
+              </div>
+              <Transition name="collapse">
+                <div v-show="!isCollapsed(item.index)" class="thinking-block-content">
+                  <div class="thinking-text">{{ item.thinking }}</div>
+                </div>
+              </Transition>
+            </div>
+            <span v-if="item.content" class="text-content">{{ item.content }}</span>
+          </template>
+
+          <a-image
+            v-if="item.type === 'image_url' && item.image_url"
+            class="image-content"
+            :src="item.image_url.url"
+            :preview-src="item.image_url.url" />
+
+          <div v-if="item.type === 'textWithConfirm'" class="confirm-content">
+            <p class="confirm-text">{{ item.text }}</p>
+
+            <div class="confirm-actions" v-if="item.confirm === undefined">
+              <a-button
+                v-for="sub in item.button"
+                :key="sub.text"
+                @click="handleClick(sub, item as any)"
+                size="small"
+                :type="sub.type ?? 'default'"
+                class="confirm-btn">
+                {{ sub.text }}
+              </a-button>
+            </div>
+
+            <div v-else class="confirm-result">
+              <div class="result-icon" :class="item.confirm ? 'success' : 'error'">
+                <i-check-one v-if="item.confirm" size="18" />
+                <i-close-one v-else size="18" />
+              </div>
+              <span class="result-text">{{ item.confirm ? "已确认" : "已取消" }}</span>
+            </div>
+          </div>
+
+          <div v-if="item.type === 'thinking'" class="thinking-content">
+            <span class="thinking-dot"></span>
+            <span class="thinking-dot"></span>
+            <span class="thinking-dot"></span>
+          </div>
         </div>
       </template>
+
       <template v-else>
-        <div v-for="(item, index) in msg.data" :key="index">
-          <McBubble v-if="item.type === 'text'" :align="'right'">
-            <McMarkdownCard :enableThink="true" :content="item.text" :theme="theme"></McMarkdownCard>
-          </McBubble>
-          <McBubble v-if="item.type === 'image_url'" :content="item.image_url" :align="'right'"></McBubble>
+        <div v-for="(item, index) in msg.data" :key="index" class="message-bubble user-bubble">
+          <span v-if="item.type === 'text'" class="text-content">{{ item.text }}</span>
+          <a-image v-if="item.type === 'image_url'" class="image-content" :src="item.image_url.url" :preview-src="item.image_url.url" />
         </div>
       </template>
     </div>
@@ -33,20 +79,17 @@
 </template>
 
 <script setup lang="ts">
-import logo from "@/assets/logo.svg";
 import { computed, reactive } from "vue";
-import { UserOutlined, DownOutlined } from "@ant-design/icons-vue";
-const theme = ref("light");
+import { DownOutlined } from "@ant-design/icons-vue";
+import logo from "@/assets/logo.png";
 
 const props = defineProps<{
   msg: ChatMessage;
   sendApi: (msg: string) => void;
 }>();
 
-// 思考块折叠状态
 const thinkingCollapsed = reactive<Record<number, boolean>>({});
 
-// 解析文本中的 <think>...</think> 标签
 function parseThinkingContent(text: string): { thinking: string | null; content: string } {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/;
   const match = text.match(thinkRegex);
@@ -60,7 +103,6 @@ function parseThinkingContent(text: string): { thinking: string | null; content:
   return { thinking: null, content: text };
 }
 
-// 解析后的消息项类型
 interface ParsedMessageItem {
   type: string;
   index: number;
@@ -72,7 +114,6 @@ interface ParsedMessageItem {
   confirm?: boolean;
 }
 
-// 处理后的消息数据
 const parsedData = computed<ParsedMessageItem[] | null>(() => {
   if (props.msg.identity !== "assistant") return null;
 
@@ -91,12 +132,10 @@ const parsedData = computed<ParsedMessageItem[] | null>(() => {
   });
 });
 
-// 切换思考块折叠状态
 function toggleThinking(index: number) {
   thinkingCollapsed[index] = !thinkingCollapsed[index];
 }
 
-// 获取折叠状态（默认折叠）
 function isCollapsed(index: number): boolean {
   return thinkingCollapsed[index] !== false;
 }
@@ -148,17 +187,11 @@ function handleClick(
 .avatar {
   flex-shrink: 0;
 
-  .ai-avatar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-
-    .avatar-text {
-      font-size: 14px;
-      font-weight: 600;
-    }
-  }
-
-  .user-avatar {
-    background: var(--mainGradient);
+  .assistant-logo {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    margin-top: 4px;
   }
 }
 
@@ -167,6 +200,14 @@ function handleClick(
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+
+  .assistant-role {
+    font-size: 24px;
+    line-height: 1;
+    color: #1f2937;
+    font-weight: 500;
+    margin-top: 2px;
+  }
 }
 
 .message-bubble {
@@ -287,7 +328,6 @@ function handleClick(
   }
 }
 
-// 折叠动画
 .collapse-enter-active,
 .collapse-leave-active {
   transition: all 0.3s ease;
@@ -306,7 +346,6 @@ function handleClick(
   max-height: 400px;
 }
 
-// 思考过程折叠块样式
 .thinking-block {
   background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
   border: 1px solid #e8ecf4;
@@ -364,7 +403,6 @@ function handleClick(
       max-height: 300px;
       overflow-y: auto;
 
-      // 自定义滚动条
       &::-webkit-scrollbar {
         width: 4px;
       }
@@ -379,8 +417,5 @@ function handleClick(
       }
     }
   }
-}
-:deep(.hljs) {
-  text-wrap: wrap;
 }
 </style>

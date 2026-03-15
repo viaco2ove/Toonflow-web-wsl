@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { checkForUpdate, RELEASE_URL, type UpdateInfo } from "@/utils/checkUpdate";
+import { checkForUpdate, RELEASE_URL, shouldCheckForUpdate, type UpdateInfo } from "@/utils/checkUpdate";
 import useIndexStore from "@/stores/index";
 
 const indexStore = useIndexStore();
@@ -68,7 +68,9 @@ function handleUpdate() {
 }
 
 onMounted(() => {
-  checkUpdate();
+  if (shouldCheckForUpdate()) {
+    checkUpdate();
+  }
 });
 </script>
 
