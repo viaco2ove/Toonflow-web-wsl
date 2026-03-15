@@ -228,6 +228,14 @@ async function handleGenerate() {
   try {
     await store.generateVideo(props.configId);
     message.success("视频生成任务已提交");
+    // 提交任务后立即刷新一次，尽快在右侧看到“生成中”
+    if (config.value?.scriptId) {
+      await store.fetchVideoData(config.value.scriptId);
+      // 任务落库存在轻微延迟，补一次延迟刷新
+      setTimeout(() => {
+        void store.fetchVideoData(config.value!.scriptId);
+      }, 1200);
+    }
   } catch (error: any) {
     message.error(error?.message || "生成失败");
   } finally {
