@@ -191,6 +191,7 @@ const manufacturerLabels: Record<string, string> = {
   volcengine: "豆包",
   runninghub: "Sora",
   openAi: "OpenAI",
+  t8star: "t8star",
 };
 
 function getManufacturerLabel(manufacturer: string): string {

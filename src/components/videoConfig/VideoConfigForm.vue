@@ -21,7 +21,7 @@
           {{ mode.label }}
         </a-radio>
       </a-radio-group>
-      <span v-if="!isCurrentModeSupported" class="mode-warning">当前模型不支持该模式，请更换模式或更换模型</span>
+      <span v-if="showModeUnsupportedWarning" class="mode-warning">当前模型不支持该模式，请更换模式或更换模型</span>
     </div>
     <div class="form-row" v-else>
       <label>模式</label>
@@ -211,7 +211,6 @@ import axios from "@/utils/axios";
 import {
   type ImageItem,
   type VideoConfigData,
-  manufacturerConfigs,
   getManufacturerConfig,
   getManufacturerLabel,
   getModeLabel,
@@ -227,6 +226,7 @@ import {
   getMaxImages,
   getAudioSupport,
   getModelList,
+  hasModelConfig,
   isModeSupported,
 } from "./manufacturerConfig";
 
@@ -257,12 +257,20 @@ const emit = defineEmits<{
 // 本地配置副本
 const localConfig = reactive<VideoConfigData>({ ...props.config });
 const promptLoading = ref(false);
+const modelMetaReady = ref(false);
 
 // 图片选择器状态
 const selectorVisible = ref(false);
 const selectorMode = ref<"start" | "end" | "multi" | "single">("start");
 const modeOptions = computed(() => getModeOptions(localConfig.manufacturer, localConfig.model));
+const hasCurrentModelMeta = computed(() => hasModelConfig(localConfig.manufacturer, localConfig.model));
 const isCurrentModeSupported = computed(() => isModeSupported(localConfig.manufacturer, localConfig.model, localConfig.mode));
+const showModeUnsupportedWarning = computed(() => {
+  if (!modelMetaReady.value) return false;
+  if (!localConfig.manufacturer || !localConfig.model || !localConfig.aiConfigId) return false;
+  if (!hasCurrentModelMeta.value) return false;
+  return !isCurrentModeSupported.value;
+});
 
 // 监听外部配置变化
 watch(
@@ -431,21 +439,19 @@ function emitChange() {
   emit("update:config", configCopy);
   emit("change", configCopy);
 }
-const manufacturerAllRecord: Record<string, string> = Object.values(manufacturerConfigs).reduce((acc: Record<string, string>, c) => {
-  acc[c.value as string] = c.label;
-  return acc;
-}, {});
 const availableManufacturers = computed(() => {
   if (manufacturerList.value.length === 0) return [];
 
   return manufacturerList.value.map((i) => ({
-    label: i.model + "—" + manufacturerAllRecord[i.manufacturer],
+    label: i.model + "—" + getManufacturerLabel(i.manufacturer),
     value: i.id,
     manufacturer: i.manufacturer,
   }));
 });
 const manufacturerList = ref<{ model: string; manufacturer: string; id: number }[]>([]);
 onMounted(async () => {
+  await getModelList();
+  modelMetaReady.value = true;
   const res = await axios.post("/video/getManufacturer", {
     userId: Number(localStorage.getItem("userId")),
   });
@@ -463,9 +469,6 @@ onMounted(async () => {
       localConfig.aiConfigId = selectedManufacturer.id;
     }
   }
-});
-onMounted(() => {
-  getModelList();
 });
 </script>
 

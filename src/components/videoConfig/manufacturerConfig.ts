@@ -65,12 +65,35 @@ export interface ManufacturerConfig {
   maxImages: number;
 }
 
+const genericFallbackConfig: ManufacturerConfig = {
+  label: "其他",
+  value: "other",
+  modes: [
+    { label: "文本模式", value: "text" },
+    { label: "单图模式", value: "single" },
+    { label: "首尾帧模式", value: "startEnd" },
+    { label: "多图模式", value: "multi" },
+  ],
+  defaultMode: "single",
+  resolutions: [
+    { label: "480p", value: "480p" },
+    { label: "720p", value: "720p" },
+    { label: "1080p", value: "1080p" },
+  ],
+  defaultResolution: "720p",
+  resolutionLabel: "分辨率",
+  durationRange: { min: 2, max: 15, step: 1 },
+  durationTip: "2-15秒",
+  maxImages: 9,
+};
+
 // 厂商标签映射
 export const manufacturerLabels: Record<string, string> = {
   volcengine: "火山引擎(豆包)",
   runninghub: "RunningHub(Sora)",
   // apimart: "Apimart(Sora)",
   openAi: "OpenAI(Sora)",
+  t8star: "T8Star",
   kling: "可灵",
   vidu: "Vidu",
   wan: "万象",
@@ -751,6 +774,11 @@ export function getModelConfig(model: string, manufacturer: string): ModelConfig
   return modelList.find((m) => m.model === model && m.manufacturer === manufacturer);
 }
 
+export function hasModelConfig(manufacturer: string, model?: string): boolean {
+  if (!manufacturer || !model) return false;
+  return Boolean(getModelConfig(model, manufacturer));
+}
+
 // 根据模型配置动态生成厂商配置（向后兼容）
 export function getModelBasedConfig(modelConfig: ModelConfig): ManufacturerConfig {
   // 从 type 生成 modes
@@ -832,9 +860,12 @@ export function getManufacturerConfig(manufacturer: string, model?: string): Man
     }
   }
 
-  // 回退到旧的静态配置
+  const staticConfig = manufacturerConfigs[manufacturer];
+  if (staticConfig?.modes?.length) {
+    return staticConfig;
+  }
 
-  return manufacturerConfigs[manufacturer] || manufacturerConfigs.volcengine;
+  return genericFallbackConfig;
 }
 
 // 获取厂商标签

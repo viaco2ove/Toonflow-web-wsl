@@ -117,7 +117,7 @@ import { message } from "ant-design-vue";
 import videoStore, { type VideoResult } from "@/stores/video";
 import { storeToRefs } from "pinia";
 import axios from "@/utils/axios";
-import { VideoConfigForm, type VideoConfigData, getModelList, isModeSupported } from "@/components/videoConfig";
+import { VideoConfigForm, type VideoConfigData, getModelList, hasModelConfig, isModeSupported } from "@/components/videoConfig";
 
 type DraftVideoConfig = VideoConfigData & {
   scriptId?: number;
@@ -148,6 +148,7 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 const editableConfig = ref<VideoConfigData | null>(null);
 const isModeAvailable = computed(() => {
   if (!editableConfig.value) return true;
+  if (!hasModelConfig(editableConfig.value.manufacturer, editableConfig.value.model)) return true;
   return isModeSupported(editableConfig.value.manufacturer, editableConfig.value.model, editableConfig.value.mode);
 });
 
