@@ -119,13 +119,24 @@ import { storeToRefs } from "pinia";
 import axios from "@/utils/axios";
 import { VideoConfigForm, type VideoConfigData, getModelList } from "@/components/videoConfig";
 
+type DraftVideoConfig = VideoConfigData & {
+  scriptId?: number;
+  selectedResultId?: number | null;
+};
+
 const props = defineProps<{
   configId: number | null;
+  draftConfig?: DraftVideoConfig | null;
+}>();
+const emit = defineEmits<{
+  (e: "draftChange", config: DraftVideoConfig): void;
+  (e: "draftGenerate", config: DraftVideoConfig): void;
 }>();
 
 const modalVisible = defineModel<boolean>({});
 const store = videoStore();
-const { videoConfigs, videoResults } = storeToRefs(store);
+const { videoConfigs } = storeToRefs(store);
+const isDraftMode = computed(() => Boolean(props.draftConfig));
 
 const isGenerating = ref(false);
 const videoPlayerVisible = ref(false);
@@ -137,6 +148,15 @@ const editableConfig = ref<VideoConfigData | null>(null);
 
 // 当前配置
 const config = computed(() => {
+  if (isDraftMode.value && props.draftConfig) {
+    return {
+      ...props.draftConfig,
+      id: Number(props.draftConfig.id || props.configId || 0),
+      scriptId: Number(props.draftConfig.scriptId || 0),
+      selectedResultId: props.draftConfig.selectedResultId ?? null,
+    };
+  }
+
   if (!props.configId) return null;
 
   return videoConfigs.value.find((c) => c.id === props.configId) || null;
@@ -144,6 +164,7 @@ const config = computed(() => {
 
 // 当前配置的所有结果
 const results = computed(() => {
+  if (isDraftMode.value) return [];
   if (!props.configId) return [];
   return store.getResultsByConfigId(props.configId);
 });
@@ -180,10 +201,20 @@ watch(
 
 // 配置表单变更处理
 async function handleConfigFormChange(updatedConfig: VideoConfigData) {
-  if (!props.configId || !config.value) return;
-
   // 更新可编辑配置
   editableConfig.value = updatedConfig;
+
+  if (isDraftMode.value && props.draftConfig) {
+    emit("draftChange", {
+      ...props.draftConfig,
+      ...updatedConfig,
+      id: Number(props.configId || props.draftConfig.id || 0),
+      scriptId: Number(props.draftConfig.scriptId || 0),
+    });
+    return;
+  }
+
+  if (!props.configId || !config.value) return;
 
   // 更新本地 store（包括图片变更）
   store.updateConfigFull(props.configId, {
@@ -222,6 +253,16 @@ function formatDuration(seconds: number): string {
 
 // 生成视频
 async function handleGenerate() {
+  if (isDraftMode.value && props.draftConfig && editableConfig.value) {
+    emit("draftGenerate", {
+      ...props.draftConfig,
+      ...editableConfig.value,
+      id: Number(props.configId || props.draftConfig.id || 0),
+      scriptId: Number(props.draftConfig.scriptId || 0),
+    });
+    return;
+  }
+
   if (!props.configId) return;
 
   isGenerating.value = true;

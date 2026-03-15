@@ -32,9 +32,14 @@
 - 已补齐：
   - `src/views/projectDetail/components/scriptManager/components/generateVideo.vue`
   - `src/views/projectDetail/components/scriptManager/components/storyboardImage/storyboardChat.vue`
+  - `src/views/projectDetail/components/scriptManager/components/storyboardImage/draggableCanvas.vue`
+  - `src/views/projectDetail/components/scriptManager/components/generateVideo/videoDetail.vue`
 - 已增加“AI视频生成”入口，接入助手弹窗（`mode=video`）。
 - 视频配置卡片补了“刷新状态”能力（`/video/refreshVideoStatus`）。
 - 已修正 AI 视频助手 WebSocket 连接参数，确保后端进入视频会话分支（`mode=video`）。
+- 已恢复 AI 视频模式的“视频专用画布”展示：不再是纯聊天页，而是左侧视频配置卡片画布 + 右侧助手聊天。
+- 已恢复视频卡片交互：点击卡片可进入视频详情（草稿配置也可编辑），支持触发 `/生成视频 <配置ID>` 与 `/导出视频配置`。
+- 已同步视频模式助手文案与会话流，避免与分镜模式混用描述。
 
 5. 镜头编辑器修改未同步
 - 已补齐：
@@ -62,5 +67,6 @@
 - 已将工作台侧栏默认从折叠改为展开（`collapsed=false`），避免入口仅显示图标导致“看起来缺失”。
 
 ## 本地验证情况
-- 受当前环境依赖问题影响（`rollup` 可选依赖缺失、`vue-tsc` 不可用），本机未能完成 `yarn build-only` / `yarn type-check`。
+- `yarn type-check` 失败：`tsconfig.node.json(17,5): Unknown compiler option 'exclude'`（仓库现状问题）。
+- `yarn build-only` 失败：缺少 `@rollup/rollup-linux-x64-gnu`（当前依赖环境问题）。
 - 代码层面已完成逐文件自检，建议你在可用 Node/依赖环境下再跑一次完整构建。

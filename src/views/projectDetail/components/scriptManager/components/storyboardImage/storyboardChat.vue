@@ -21,26 +21,35 @@
     </template>
     <div class="content pr">
       <draggableCanvas
-        v-if="props.mode !== 'video'"
         v-model="gridData"
         :generatingIds="generatingIds"
-        @replaceShot="replaceShot"
+        :disableEditor="isVideoMode"
+        @replaceShot="handleReplaceShot"
         @generateImage="handleGenerateImage" />
-      <div class="chatBox pa" :class="{ hoverState: gridData.length > 0, videoMode: props.mode === 'video' }">
+      <div class="chatBox pa" :class="{ hoverState: isVideoMode || gridData.length > 0 }">
         <chat ref="chatRef" :canSend="canSend" enterToSend :sendApi="sendApi" v-model="history" />
         <div class="f ac jb">
           <div></div>
-          <a-button v-if="props.mode !== 'video'" class="btn" type="primary" @click="exportAll">导出全部镜头({{ imageNumber }})</a-button>
+          <a-button class="btn" type="primary" @click="exportAll">
+            {{ isVideoMode ? "导出全部视频配置" : `导出全部镜头(${imageNumber})` }}
+          </a-button>
         </div>
       </div>
     </div>
     <detectionImage
-      v-if="props.mode !== 'video'"
+      v-if="!isVideoMode"
       ref="detectionImageRef"
       v-model:detectionImageShow="detectionImageShow"
       v-model:imageData="imageData"
       v-model:modalShow="modalShow"
       @save="$emit('save')" />
+    <videoDetail
+      v-if="isVideoMode && videoDetailVisible"
+      v-model="videoDetailVisible"
+      :configId="currentVideoConfigId"
+      :draftConfig="currentDraftConfig"
+      @draftChange="handleDraftChange"
+      @draftGenerate="handleDraftGenerate" />
   </a-modal>
 </template>
 
@@ -53,6 +62,7 @@ import WsClient from "@/utils/wsClient";
 import { message as antMessage, message, Modal } from "ant-design-vue";
 import detectionImage from "./detectionImage.vue";
 import videoStore from "@/stores/video";
+import videoDetail from "../generateVideo/videoDetail.vue";
 
 type ImageDataItem = {
   id: string;
@@ -108,8 +118,12 @@ const sessionStorageKey = computed(() => {
   const script = Number(props.scriptId || 0);
   return `storyboard-chat-session:${props.projectId}:${script}:${isVideoMode.value ? "video" : "storyboard"}`;
 });
+const videoDetailVisible = ref(false);
+const currentVideoConfigId = ref<number | null>(null);
+const currentDraftConfig = ref<Record<string, any> | null>(null);
 
 function createWelcomeMessage(): AssistantMessage {
+  const isVideo = isVideoMode.value;
   return {
     id: uuidv4(),
     identity: "assistant",
@@ -117,8 +131,10 @@ function createWelcomeMessage(): AssistantMessage {
     data: [
       {
         type: "textWithConfirm",
-        text: "欢迎使用Toonflow！我已经收到你的剧本与相关资产,请和我说“开始”启动生成分镜图的制作吧！",
-        button: [{ text: "开始制作", type: "primary" }],
+        text: isVideo
+          ? "欢迎使用Toonflow！我已经收到你的剧本与相关资产，请和我说“开始”启动AI视频生成流程吧！"
+          : "欢迎使用Toonflow！我已经收到你的剧本与相关资产,请和我说“开始”启动生成分镜图的制作吧！",
+        button: [{ text: isVideo ? "开始生成" : "开始制作", type: "primary" }],
         confirm: undefined,
       },
     ],
@@ -290,6 +306,11 @@ function initWsClient() {
       ws = null;
     },
   });
+}
+
+function handleReplaceShot(options: { segmentId: number; cellId: number; cell: string }) {
+  if (isVideoMode.value) return;
+  replaceShot(options);
 }
 
 function applySessionHistory(rawHistory: any) {
@@ -631,6 +652,9 @@ function cancelModal() {
 // 关闭并清理资源
 function closeAndCleanup() {
   modalShow.value = false;
+  videoDetailVisible.value = false;
+  currentVideoConfigId.value = null;
+  currentDraftConfig.value = null;
   if (ws) {
     ws.close();
     ws = null;
@@ -774,13 +798,83 @@ function updateGridDataFromShots(shots: GridItem[]) {
 }
 
 function handleGenerateImage(grid: GridItem) {
+  if (isVideoMode.value) {
+    const configId = Number((grid as any)?.id || (grid as any)?.segmentId || 0);
+    if (!configId) {
+      antMessage.warning("未找到视频配置ID");
+      return;
+    }
+    const matched = gridData.value.find((item) => Number((item as any).id) === configId || Number(item.segmentId) === configId);
+    currentDraftConfig.value = matched
+      ? {
+          ...matched,
+          ...grid,
+          id: Number((matched as any).id || matched.segmentId || configId),
+          scriptId: props.scriptId,
+        }
+      : grid
+        ? {
+            ...grid,
+            id: configId,
+            scriptId: props.scriptId,
+          }
+        : null;
+    currentVideoConfigId.value = configId;
+    videoDetailVisible.value = true;
+    return;
+  }
   axios.post("/storyboard/generateShotImage", { ...grid, scriptId: props.scriptId, projectId: props.projectId }).then(() => {
     console.log("%c Line:516 🍑 修改成功", "background:#b03734");
   });
 }
 
+function handleDraftChange(payload: Record<string, any>) {
+  if (!payload) return;
+  const targetId = Number(payload.id || currentVideoConfigId.value || 0);
+  if (!targetId) return;
+  const manufacturerText = String(payload.manufacturer || "").trim() || "未知厂商";
+  const resolutionText = String(payload.resolution || "720p").trim();
+  const durationText = `${Number(payload.duration || 5)}s`;
+  const modeText = payload.mode === "startEnd" ? "首尾帧" : payload.mode === "single" ? "单图" : String(payload.mode || "");
+
+  gridData.value = gridData.value.map((item) =>
+    Number((item as any).id) === targetId
+      ? {
+          ...item,
+          ...payload,
+          fragmentContent: payload.prompt || item.fragmentContent || "",
+          assetsTags: [
+            { text: manufacturerText, type: "props" },
+            { text: resolutionText, type: "props" },
+            { text: durationText, type: "props" },
+            { text: modeText, type: "props" },
+          ],
+        }
+      : item,
+  );
+  currentDraftConfig.value = { ...(currentDraftConfig.value || {}), ...payload, id: targetId };
+}
+
+async function handleDraftGenerate(payload: Record<string, any>) {
+  const targetId = Number(payload?.id || currentVideoConfigId.value || 0);
+  if (!targetId) {
+    antMessage.warning("未找到视频配置ID");
+    return;
+  }
+  await sendApi(`/生成视频 ${targetId}`);
+}
+
 //导出全部镜头
 async function exportAll() {
+  if (isVideoMode.value) {
+    try {
+      await sendApi("/导出视频配置");
+    } catch (e) {
+      console.error(e);
+      antMessage.error("导出视频配置失败");
+    }
+    return;
+  }
   if (!detectionImageRef.value) return;
   if (imageNumber.value == 0) {
     antMessage.warning("请先生成分镜图片");
@@ -898,10 +992,6 @@ function test() {
     .btn {
       margin-top: 10px;
     }
-  }
-  .chatBox.videoMode {
-    width: calc(100% - 20px);
-    right: 10px;
   }
   // .hoverState {
   //   transform: translateX(300px);

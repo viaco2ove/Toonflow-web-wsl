@@ -5,13 +5,18 @@
         v-for="grid in modelValue"
         :key="grid.id || grid.segmentId"
         class="gridContainer"
-        :class="{ dragging: dragState.draggingId === (grid.id || grid.segmentId), generating: isGenerating(grid.id) }"
+        :class="{
+          dragging: dragState.draggingId === (grid.id || grid.segmentId),
+          generating: isGenerating(grid.id),
+          videoMode: props.disableEditor,
+        }"
         :data-id="grid.id || grid.segmentId"
         :style="{
           left: grid.x + 'px',
           top: grid.y + 'px',
           zIndex: grid.zIndex || 1,
-        }">
+        }"
+        @click="handleGridClick(grid)">
         <div class="topMenu fc" @mousedown.stop="handleGridMouseDown($event, grid)">
           <div class="gridTitle" :title="grid.title">{{ grid.title }}</div>
           <div class="fragmentContent" :title="grid.fragmentContent">{{ grid.fragmentContent }}</div>
@@ -23,7 +28,7 @@
         <a-spin :spinning="isGenerating(grid.id)" tip="生成中...">
           <div class="grid" :style="getGridStyle(grid.cells.length)">
             <div v-for="(cell, index) in grid.cells" :key="index" class="gridItem" :style="getImageSize">
-              <div class="tag">镜头{{ index + 1 }}</div>
+              <div v-if="!props.disableEditor" class="tag">镜头{{ index + 1 }}</div>
               <template v-if="cell.src">
                 <img :src="cell.src" loading="lazy" @click="editImage(cell, grid.segmentId)" :style="getImageSize" />
                 <div class="cellPrompt" :title="cell.prompt" @click.stop="updateCellPrompt($event, cell, grid.segmentId)">{{ cell.prompt }}</div>
@@ -69,6 +74,7 @@ const { project } = storeToRefs(mainStore());
 const props = defineProps({
   modelValue: { type: Array, required: true },
   generatingIds: { type: [Array, Set], default: () => [] },
+  disableEditor: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["update:modelValue", "generateImage", "replaceShot"]);
@@ -86,6 +92,15 @@ const clickOption = {
   cellId: null,
 };
 function editImage(cell, segmentId) {
+  if (props.disableEditor) {
+    emit("generateImage", {
+      segmentId,
+      cellId: cell.id,
+      src: cell.src,
+      prompt: cell.prompt || "",
+    });
+    return;
+  }
   clickOption.segmentId = segmentId;
   clickOption.cellId = cell.id;
   editorRef.value.doFusionEdit({
@@ -98,6 +113,17 @@ function editImage(cell, segmentId) {
     scriptId: -1,
     generateImg: Array.isArray(cell.generateImg) ? cell.generateImg : [],
     selectedResultId: Number.isFinite(Number(cell.selectedResultId)) ? Number(cell.selectedResultId) : -1,
+  });
+}
+
+function handleGridClick(grid) {
+  if (!props.disableEditor) return;
+  emit("generateImage", {
+    id: grid.id,
+    segmentId: grid.segmentId,
+    cellId: 1,
+    src: grid.cells && grid.cells[0] ? grid.cells[0].src : "",
+    prompt: grid.fragmentContent || (grid.cells && grid.cells[0] ? grid.cells[0].prompt : ""),
   });
 }
 
@@ -355,6 +381,7 @@ function generatingImage(grid) {
 }
 
 function updateCellPrompt(event, cell, segmentId) {
+  if (props.disableEditor) return;
   ElMessageBox.prompt("请输入镜头提示词", "提示词", {
     confirmButtonText: "确认",
     cancelButtonText: "取消",
@@ -485,6 +512,92 @@ $hoverBg: #e8f4ff;
         margin-left: 5px;
       }
     }
+  }
+}
+
+.gridContainer.videoMode {
+  width: 420px !important;
+  background: #fff !important;
+  border: 1px solid #eadcff !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.14) !important;
+
+  .topMenu {
+    display: block !important;
+    padding: 12px 14px 10px !important;
+    background: #fff !important;
+    border-bottom: 1px solid #f1eaff !important;
+  }
+
+  .topMenu .gridTitle {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #4c1d95 !important;
+    margin-bottom: 6px !important;
+  }
+
+  .topMenu .fragmentContent {
+    font-size: 13px !important;
+    color: #64748b !important;
+    margin-bottom: 8px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .grid {
+    display: block !important;
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+  }
+
+  .grid .gridItem:not(:first-child) {
+    display: none !important;
+  }
+
+  .gridItem {
+    width: 100% !important;
+    min-height: 180px !important;
+    background: #f8f6ff !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-direction: column !important;
+    position: relative !important;
+  }
+
+  .gridItem::before {
+    content: "⚙";
+    width: 72px;
+    height: 72px;
+    border-radius: 999px;
+    background: #eadcff;
+    color: #7c3aed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    margin-bottom: 14px;
+  }
+
+  .gridItem::after {
+    content: "待生成\A点击进入生成";
+    white-space: pre;
+    color: #94a3b8;
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  .gridItem img,
+  .gridItem .preview,
+  .gridItem .cellPrompt,
+  .gridItem .cellText {
+    display: none !important;
   }
 }
 
