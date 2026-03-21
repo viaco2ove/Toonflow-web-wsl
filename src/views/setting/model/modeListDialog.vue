@@ -122,6 +122,7 @@ const tabList = [
   { key: "text", tab: "文本", icon: "i-text", customDesc: "使用自定义文本模型", customType: "text" },
   { key: "image", tab: "图像", icon: "i-picture", customDesc: "使用自定义图像模型", customType: "image" },
   { key: "video", tab: "视频", icon: "i-video", customDesc: "使用自定义视频模型", customType: "video" },
+  { key: "voice", tab: "语音", icon: "i-sound", customDesc: "使用自定义语音模型", customType: "voice" },
 ];
 const useTabList = computed(() => {
   if (!props.typeList.length) {
@@ -148,6 +149,7 @@ const websites = ref<Record<string, string>>({
   grsai: "https://grsai.ai/zh/dashboard/api-keys",
   qingyuntop: "https://qingyuntop.top",
   kieai: "https://kie.ai",
+  ai_voice_tts: "https://github.com/viaco2ove/ai_voice_tts.git",
 });
 
 const currentWebsite = computed(() => {
@@ -173,6 +175,7 @@ const manufacturerNames: Record<string, string> = {
   grsai: "Grsai",
   qingyuntop: "QingyunTop",
   kieai: "KieAI",
+  ai_voice_tts: "ai_voice_tts",
   other: "其他",
 };
 
@@ -196,6 +199,7 @@ function getManufacturerColor(manufacturer: string): string {
     grsai: "#2B7FFF",
     qingyuntop: "#4C9AFF",
     kieai: "#6366F1",
+    ai_voice_tts: "#8B5CF6",
     other: "default",
   };
   return colors[manufacturer] || "default";
@@ -271,6 +275,9 @@ const manufacturerDefaultBaseUrls: Record<string, Record<string, string>> = {
   },
   kieai: {
     video: "https://api.kie.ai/api/v1/veo/generate|https://api.kie.ai/api/v1/veo/record-info?taskId={taskId}",
+  },
+  ai_voice_tts: {
+    voice: "http://127.0.0.1:8000",
   },
   modelScope: {
     text: "https://api-inference.modelscope.cn/v1",
@@ -417,6 +424,8 @@ const availableManufacturers = computed(() => {
     currentModels = imageModels.value;
   } else if (activeTab.value === "video") {
     currentModels = videoModels.value;
+  } else if (activeTab.value === "voice") {
+    currentModels = voiceModels.value;
   }
 
   currentModels.forEach((model) => {
@@ -457,6 +466,33 @@ function filterModels(models: ModelCard[]): ModelCard[] {
 // 筛选后的文本模型
 const filteredTextModels = computed<ModelCard[]>(() => {
   return filterModels(textModels.value);
+});
+
+// 语音模型预设
+const voiceModelPresets = ref<Record<string, { label: string; value: string }[]>>({
+  ai_voice_tts: [{ label: "ai_voice_tts", value: "ai_voice_tts" }],
+});
+
+const voiceModels = computed<ModelCard[]>(() => {
+  const models: ModelCard[] = [];
+  Object.entries(voiceModelPresets.value).forEach(([manufacturer, presets]) => {
+    presets.forEach((preset) => {
+      models.push({
+        manufacturer,
+        manufacturerName: manufacturerNames[manufacturer] || manufacturer,
+        modelType: "voice",
+        model: preset.value,
+        modelName: preset.label,
+        description: `${manufacturerNames[manufacturer] || manufacturer}语音模型`,
+        baseUrl: manufacturerDefaultBaseUrls[manufacturer]?.voice || "",
+      });
+    });
+  });
+  return models;
+});
+
+const filteredVoiceModels = computed<ModelCard[]>(() => {
+  return filterModels(voiceModels.value);
 });
 
 // 切换厂商选择
@@ -610,7 +646,8 @@ const filteredVideoModels = computed<ModelCard[]>(() => {
 function getFilteredModels(key: string): ModelCard[] {
   if (key === "text") return filteredTextModels.value;
   if (key === "image") return filteredImageModels.value;
-  return filteredVideoModels.value;
+  if (key === "video") return filteredVideoModels.value;
+  return filteredVoiceModels.value;
 }
 
 // 选择模型卡片
@@ -685,6 +722,8 @@ function getData() {
         imageModelPresets.value = res.data;
       } else if (activeTab.value === "video") {
         videoModelPresets.value = res.data;
+      } else if (activeTab.value === "voice") {
+        voiceModelPresets.value = res.data;
       }
     });
 }

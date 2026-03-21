@@ -86,7 +86,7 @@ async function keep() {
     ElMessage.error("请输入模型标识");
     return;
   }
-  if (!apiKey) {
+  if (!apiKey && type !== "voice") {
     ElMessage.error("请输入 API Key");
     return;
   }

@@ -228,6 +228,7 @@ interface ElementData {
   duration: number;
   type: string;
   videoPrompt: string;
+  voiceConfig?: string | null;
 }
 
 interface ScriptItem {
@@ -342,7 +343,7 @@ function handleCheckedAll(data: { checked: boolean; records: ElementData[] }) {
 }
 
 function addElement() {
-  currentRow.value = { id: 0, name: "", intro: "", duration: 0, filePath: "", type: "", prompt: "", remark: "", videoPrompt: "" };
+  currentRow.value = { id: 0, name: "", intro: "", duration: 0, filePath: "", type: "", prompt: "", remark: "", videoPrompt: "", voiceConfig: null };
   addDialogShow.value = true;
 }
 

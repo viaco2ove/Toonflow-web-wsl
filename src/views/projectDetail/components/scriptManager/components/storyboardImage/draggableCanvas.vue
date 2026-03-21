@@ -5,12 +5,13 @@
         v-for="grid in modelValue"
         :key="grid.id || grid.segmentId"
         class="gridContainer"
-        :class="{
+      :class="{
           dragging: dragState.draggingId === (grid.id || grid.segmentId),
           generating: isGenerating(grid.id),
           videoMode: props.disableEditor,
         }"
         :data-id="grid.id || grid.segmentId"
+        :data-segment-id="grid.segmentId"
         :style="{
           left: grid.x + 'px',
           top: grid.y + 'px',
@@ -362,8 +363,10 @@ const handleWheel = (e) => {
 
 const focusOnGrid = (gridId, duration = 300) => {
   // 支持使用 id 或 segmentId 查找
-  const gridData = props.modelValue.find((item) => (item.id || item.segmentId) === gridId);
-  const gridElement = canvasRef.value?.querySelector(`[data-id="${gridId}"]`);
+  const gridData = props.modelValue.find((item) => item.id === gridId || item.segmentId === gridId);
+  const gridElement =
+    canvasRef.value?.querySelector(`[data-id="${gridId}"]`) ||
+    canvasRef.value?.querySelector(`[data-segment-id="${gridId}"]`);
   if (!gridData || !gridElement || !viewportRef.value) return;
 
   const viewportRect = viewportRef.value.getBoundingClientRect();

@@ -18,6 +18,10 @@
           <i-magic-wand :size="18" />
           <span>AI视频生成</span>
         </button>
+        <button :disabled="!disableBtn || currentConfigs.length === 0" class="generate-btn" style="margin-left: 10px" @click="timelineModalShow = true">
+          <i-video-two :size="18" />
+          <span>时间轴编辑</span>
+        </button>
         <button :disabled="!disableBtn" class="generate-btn" style="margin-left: 10px" @click="toggleMultiDeleteMode">
           <span>{{ multiDeleteMode ? "取消多选" : "进入多选删除" }}</span>
         </button>
@@ -157,6 +161,7 @@
       :projectId="currentProjectId"
       mode="video"
       title="AI视频生成" />
+    <videoTimelineEditor v-if="timelineModalShow && scriptId && currentProjectId" v-model="timelineModalShow" :scriptId="scriptId" :projectId="currentProjectId" />
   </div>
 </template>
 
@@ -166,6 +171,7 @@ import { Modal, message } from "ant-design-vue";
 import newVideo from "./generateVideo/newVideo.vue";
 import videoDetail from "./generateVideo/videoDetail.vue";
 import storyboardChat from "./storyboardImage/storyboardChat.vue";
+import videoTimelineEditor from "./generateVideo/videoTimelineEditor.vue";
 import videoStore, { type VideoConfig, type VideoResult } from "@/stores/video";
 import { storeToRefs } from "pinia";
 import axios from "@/utils/axios";
@@ -182,9 +188,11 @@ const { currentConfigs, currentProjectId } = storeToRefs(store);
 const modalShow = ref(false);
 const detailModalShow = ref(false);
 const aiVideoModalShow = ref(false);
+const timelineModalShow = ref(false);
 const currentConfigId = ref<number | null>(null);
 const multiDeleteMode = ref(false);
 const selectedConfigIds = ref<number[]>([]);
+const refreshingConfigIds = ref<number[]>([]);
 
 // 厂商标签映射
 const manufacturerLabels: Record<string, string> = {
@@ -267,6 +275,11 @@ function handleCardClick(config: VideoConfig, event: MouseEvent): void {
     return;
   }
 
+  if (hasGeneratingResult(config.id)) {
+    void refreshRunningStatus(config.id, true);
+    return;
+  }
+
   openDetail(config);
 }
 
@@ -332,9 +345,16 @@ function handleDeleteConfig(configId: number) {
   });
 }
 
-async function refreshRunningStatus(configId: number) {
+function isRefreshingConfig(configId: number): boolean {
+  return refreshingConfigIds.value.includes(configId);
+}
+
+async function refreshRunningStatus(configId: number, silentPending: boolean = false) {
   if (!props.scriptId) {
     message.warning("无效的剧本ID");
+    return;
+  }
+  if (isRefreshingConfig(configId)) {
     return;
   }
   const runningIds = store
@@ -342,23 +362,29 @@ async function refreshRunningStatus(configId: number) {
     .filter((item) => item.state === 0)
     .map((item) => item.id);
   if (runningIds.length === 0) {
-    message.info("当前没有生成中的任务");
+    if (!silentPending) {
+      message.info("当前没有生成中的任务");
+    }
     return;
   }
+  refreshingConfigIds.value = [...refreshingConfigIds.value, configId];
   try {
-    const res = await axios.post("/video/refreshVideoStatus", {
-      scriptId: props.scriptId,
-      specifyIds: runningIds,
-    });
-    const data = res?.data?.data || {};
-    await store.fetchVideoData(props.scriptId, runningIds);
+    const data = await store.refreshRemoteStatus(props.scriptId, runningIds);
     if (data.refreshed > 0 && data.unsupported === data.refreshed) {
       message.warning("当前模型暂不支持远端刷新，已仅刷新本地状态");
+    } else if (data.success > 0) {
+      message.success(`远端状态已刷新，成功同步 ${data.success} 个结果`);
+    } else if (data.failed > 0) {
+      message.warning("远端已返回失败状态，请查看失败原因");
+    } else if (!silentPending) {
+      message.info("远端任务仍在处理中");
     } else {
       message.success("状态已刷新");
     }
   } catch (error: any) {
     message.error(error?.message || "刷新状态失败");
+  } finally {
+    refreshingConfigIds.value = refreshingConfigIds.value.filter((id) => id !== configId);
   }
 }
 </script>

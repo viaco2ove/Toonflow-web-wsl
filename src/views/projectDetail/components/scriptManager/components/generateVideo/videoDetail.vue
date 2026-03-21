@@ -85,9 +85,10 @@
 
             <!-- 生成中状态 -->
             <template v-else-if="result.state === 0">
-              <div class="status-cover generating">
+              <div class="status-cover generating clickable" @click.stop="handleRefreshResult(result.id)">
                 <div class="loading-spinner"></div>
                 <span>生成中...</span>
+                <span class="refresh-hint">{{ refreshingResultIds.includes(result.id) ? "刷新中..." : "点击刷新状态" }}</span>
               </div>
             </template>
 
@@ -158,6 +159,7 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 const scriptContent = ref("");
 const scriptTitle = ref("");
 const scriptLoading = ref(false);
+const refreshingResultIds = ref<number[]>([]);
 
 // 可编辑配置（将 VideoConfig 转换为 VideoConfigData 格式）
 const editableConfig = ref<VideoConfigData | null>(null);
@@ -376,6 +378,34 @@ async function handleGenerate() {
     message.error(error?.message || "生成失败");
   } finally {
     isGenerating.value = false;
+  }
+}
+
+async function handleRefreshResult(resultId: number) {
+  const scriptId = Number(config.value?.scriptId || props.draftConfig?.scriptId || 0);
+  if (!scriptId || !resultId) {
+    message.warning("无效的刷新参数");
+    return;
+  }
+  if (refreshingResultIds.value.includes(resultId)) {
+    return;
+  }
+  refreshingResultIds.value = [...refreshingResultIds.value, resultId];
+  try {
+    const data = await store.refreshRemoteStatus(scriptId, [resultId]);
+    if (data.refreshed > 0 && data.unsupported === data.refreshed) {
+      message.warning("当前模型暂不支持远端刷新");
+    } else if (data.success > 0) {
+      message.success("远端状态已刷新");
+    } else if (data.failed > 0) {
+      message.warning("远端已返回失败状态");
+    } else {
+      message.info("远端任务仍在处理中");
+    }
+  } catch (error: any) {
+    message.error(error?.message || "刷新状态失败");
+  } finally {
+    refreshingResultIds.value = refreshingResultIds.value.filter((id) => id !== resultId);
   }
 }
 

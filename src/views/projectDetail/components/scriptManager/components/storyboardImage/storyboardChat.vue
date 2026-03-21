@@ -21,12 +21,48 @@
     </template>
     <div class="content pr">
       <draggableCanvas
+        ref="canvasRef"
         v-model="gridData"
         :generatingIds="generatingIds"
         :disableEditor="isVideoMode"
         @replaceShot="handleReplaceShot"
         @generateImage="handleGenerateImage" />
       <div class="chatBox pa" :class="{ hoverState: isVideoMode || gridData.length > 0 }">
+        <div v-if="!isVideoMode" class="segmentGuard">
+          <a-alert
+            v-if="segmentState === 'empty'"
+            type="warning"
+            show-icon
+            message="当前剧集还没有正式剧情片段"
+            description="请先生成剧情片段，再进入分镜生成。后续分镜画布会严格使用正式片段，不再临时切片。" />
+          <a-alert
+            v-else-if="segmentState === 'loading'"
+            type="info"
+            show-icon
+            message="正在检查剧情片段状态..."
+            description="稍等片刻，检查完成后即可开始分镜流程。" />
+          <div v-if="segmentState !== 'ready'" class="segmentGuardActions">
+            <a-button :loading="segmentGenerating" type="primary" @click="handleGenerateScriptSegments">生成剧情片段</a-button>
+            <a-button :loading="segmentLoading" @click="loadScriptSegments">刷新状态</a-button>
+          </div>
+          <div v-else class="segmentList">
+            <div class="segmentListTitle">
+              <span>剧情片段</span>
+              <span class="segmentListCount">{{ segmentList.length }}</span>
+            </div>
+            <div class="segmentListItems">
+              <div v-for="seg in segmentList" :key="seg.id" class="segmentListItem">
+                <div class="segmentListInfo">
+                  <span class="segmentListBadge">片段 {{ seg.sort }}</span>
+                  <span class="segmentListText" :title="seg.title || seg.summary || seg.content">
+                    {{ seg.title || seg.summary || seg.content }}
+                  </span>
+                </div>
+                <a-button size="small" @click="focusSegment(seg.sort)">定位</a-button>
+              </div>
+            </div>
+          </div>
+        </div>
         <chat ref="chatRef" :canSend="canSend" enterToSend :sendApi="sendApi" v-model="history" />
         <div class="f ac jb">
           <div></div>
@@ -100,6 +136,7 @@ const modalShow = defineModel({
   default: false,
 });
 const chatRef = ref<InstanceType<typeof chat> | null>(null);
+const canvasRef = ref<InstanceType<typeof draggableCanvas> | null>(null);
 
 const detectionImageShow = ref(false);
 
@@ -121,6 +158,11 @@ const sessionStorageKey = computed(() => {
 const videoDetailVisible = ref(false);
 const currentVideoConfigId = ref<number | null>(null);
 const currentDraftConfig = ref<Record<string, any> | null>(null);
+const segmentState = ref<"unknown" | "loading" | "empty" | "ready">("unknown");
+const segmentLoading = ref(false);
+const segmentGenerating = ref(false);
+const segmentCount = ref(0);
+const segmentList = ref<Array<{ id: number; sort: number; title?: string; summary?: string; content?: string }>>([]);
 
 function createWelcomeMessage(): AssistantMessage {
   const isVideo = isVideoMode.value;
@@ -420,6 +462,15 @@ function handleWsMessage(msgData: { type: string; data: any }) {
       // 可以在这里处理片段数据，用于后续扩展
     },
 
+    segmentRequirement: (data) => {
+      const count = Number(data.data?.count || 0);
+      segmentCount.value = count;
+      segmentState.value = count > 0 ? "ready" : "empty";
+      if (count > 0 && segmentList.value.length === 0) {
+        void loadScriptSegments();
+      }
+    },
+
     // 分镜数据更新 - 同步到 gridData
     shotsUpdated: (data) => {
       console.log("Shots Updated:", data.data);
@@ -577,11 +628,100 @@ function pushThinkingMsg() {
   });
 }
 
+async function loadScriptSegments() {
+  if (isVideoMode.value) return;
+  const scriptId = Number(props.scriptId || 0);
+  if (!scriptId) return;
+  segmentLoading.value = true;
+  segmentState.value = "loading";
+  try {
+    const { data } = await axios.post("/script/getScriptSegments", { scriptId });
+    const list = Array.isArray(data) ? data : [];
+    segmentCount.value = list.length;
+    segmentState.value = list.length > 0 ? "ready" : "empty";
+    segmentList.value = list.map((item: any) => ({
+      id: Number(item?.id || 0),
+      sort: Number(item?.sort || 0),
+      title: item?.title || "",
+      summary: item?.summary || "",
+      content: item?.content || "",
+    }));
+  } catch (error) {
+    console.error("loadScriptSegments failed", error);
+    segmentCount.value = 0;
+    segmentState.value = "empty";
+    segmentList.value = [];
+    antMessage.error("获取剧情片段失败");
+  } finally {
+    segmentLoading.value = false;
+  }
+}
+
+async function handleGenerateScriptSegments() {
+  if (isVideoMode.value) return;
+  const scriptId = Number(props.scriptId || 0);
+  if (!scriptId) {
+    antMessage.warning("缺少 scriptId，无法生成剧情片段");
+    return;
+  }
+  segmentGenerating.value = true;
+  try {
+    const { data } = await axios.post("/script/generateScriptSegments", { scriptId });
+    const count = Number(data?.count || 0);
+    segmentCount.value = count;
+    segmentState.value = count > 0 ? "ready" : "empty";
+    segmentList.value = Array.isArray(data?.rows)
+      ? data.rows.map((item: any) => ({
+          id: Number(item?.id || 0),
+          sort: Number(item?.sort || 0),
+          title: item?.title || "",
+          summary: item?.summary || "",
+          content: item?.content || "",
+        }))
+      : [];
+    pushNoticeMsg(count > 0 ? `已生成 ${count} 个正式剧情片段，现在可以开始分镜生成。` : "剧情片段生成完成，但当前没有可用片段。");
+    if (count > 0) {
+      antMessage.success(`已生成 ${count} 个剧情片段`);
+    }
+  } catch (error) {
+    console.error("generateScriptSegments failed", error);
+    antMessage.error("生成剧情片段失败");
+  } finally {
+    segmentGenerating.value = false;
+    await loadScriptSegments();
+  }
+}
+
+function focusSegment(segmentId: number) {
+  const id = Number(segmentId || 0);
+  if (!id) return;
+  if (!gridData.value?.length) {
+    antMessage.warning("当前画布还没有分镜");
+    return;
+  }
+  const exists = gridData.value.some((item) => Number(item.segmentId || 0) === id || Number(item.id || 0) === id);
+  if (!exists) {
+    antMessage.warning(`片段 ${id} 还没有对应分镜`);
+    return;
+  }
+  canvasRef.value?.focusOnGrid(id);
+}
+
 // 发送消息 API
 async function sendApi(message: string) {
   if (!message.trim()) {
     antMessage.warning("请输入内容");
     return;
+  }
+
+  if (!isVideoMode.value && !message.trim().startsWith("/")) {
+    if (segmentState.value === "unknown") {
+      await loadScriptSegments();
+    }
+    if (segmentState.value !== "ready") {
+      antMessage.warning("当前剧集还没有正式剧情片段，请先生成剧情片段");
+      return;
+    }
   }
 
   // 设置页面离开提示
@@ -757,15 +897,22 @@ watch(
   (open) => {
     if (!open) return;
     void syncVideoStoreDataForCanvas();
+    if (!isVideoMode.value) {
+      void loadScriptSegments();
+    }
   },
 );
 
 watch(
   () => [props.scriptId, props.projectId, isVideoMode.value] as const,
   ([scriptId, projectId, videoMode]) => {
-    if (!videoMode || !modalShow.value) return;
+    if (!modalShow.value) return;
     if (!Number(scriptId || 0) || !Number(projectId || 0)) return;
-    void syncVideoStoreDataForCanvas();
+    if (videoMode) {
+      void syncVideoStoreDataForCanvas();
+      return;
+    }
+    void loadScriptSegments();
   },
 );
 
@@ -1049,6 +1196,76 @@ function test() {
     .btn {
       margin-top: 10px;
     }
+  }
+  .segmentGuard {
+    margin-bottom: 12px;
+  }
+  .segmentGuardActions {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 12px;
+  }
+  .segmentList {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px dashed #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .segmentListTitle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4b5563;
+    margin-bottom: 8px;
+  }
+  .segmentListCount {
+    padding: 2px 8px;
+    background: rgba(147, 51, 234, 0.1);
+    color: #7c3aed;
+    border-radius: 9999px;
+    font-size: 12px;
+  }
+  .segmentListItems {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow: auto;
+  }
+  .segmentListItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid #f3f4f6;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+  .segmentListInfo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .segmentListBadge {
+    padding: 2px 6px;
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+    border-radius: 6px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .segmentListText {
+    font-size: 12px;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
   }
   // .hoverState {
   //   transform: translateX(300px);

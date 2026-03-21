@@ -26,6 +26,14 @@ export interface VideoConfig {
   selectedResultId: number | null; // 选中的生成结果ID
   createdAt: string;
   audioEnabled: boolean;
+  dialogue?: string;
+  audioPath?: string;
+  ttsAudioPath?: string;
+  sort?: number | null;
+  voiceConfigId?: number | null;
+  voicePresetId?: string;
+  audioTrack?: number | null;
+  dialogueTrack?: number | null;
 }
 
 // 视频生成结果
@@ -130,6 +138,22 @@ export default defineStore(
       }
     }
 
+    async function refreshRemoteStatus(scriptId: number, specifyIds: number[] = []) {
+      if (!scriptId) {
+        throw new Error("无效的剧本ID");
+      }
+      if (!Array.isArray(specifyIds) || specifyIds.length === 0) {
+        throw new Error("没有可刷新的生成任务");
+      }
+
+      const res = await axios.post("/video/refreshVideoStatus", {
+        scriptId,
+        specifyIds,
+      });
+      await fetchVideoData(scriptId, specifyIds);
+      return res?.data?.data || {};
+    }
+
     // 解析后端视频数据为结果列表（不再重建配置）
     function parseVideoResults(data: any[], scriptId: number) {
       // 全量刷新时，直接替换当前脚本的结果，避免草稿负ID被重复追加
@@ -180,6 +204,14 @@ export default defineStore(
               selectedResultId: Number.isFinite(Number(item.selectedResultId)) ? Number(item.selectedResultId) : null,
               createdAt: item.createdAt || new Date().toISOString(),
               audioEnabled: item.audioEnabled,
+              dialogue: item.dialogue || "",
+              audioPath: item.audioPath || "",
+              ttsAudioPath: item.ttsAudioPath || "",
+              sort: Number.isFinite(Number(item.sort)) ? Number(item.sort) : null,
+              voiceConfigId: Number.isFinite(Number(item.voiceConfigId)) ? Number(item.voiceConfigId) : null,
+              voicePresetId: item.voicePresetId || "",
+              audioTrack: Number.isFinite(Number(item.audioTrack)) ? Number(item.audioTrack) : 1,
+              dialogueTrack: Number.isFinite(Number(item.dialogueTrack)) ? Number(item.dialogueTrack) : 1,
             };
             videoConfigs.value.push(config);
 
@@ -449,6 +481,7 @@ export default defineStore(
       // 方法
       setCurrentScript,
       fetchVideoData,
+      refreshRemoteStatus,
       fetchVideoConfigs,
       addConfig,
       addConfigFromBackend,

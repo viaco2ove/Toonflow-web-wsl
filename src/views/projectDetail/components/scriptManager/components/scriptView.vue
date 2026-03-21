@@ -134,6 +134,61 @@
                   </div>
                 </div>
               </div>
+
+              <!-- 剧情片段卡片 -->
+              <div class="section-card segment-section">
+                <div class="section-header">
+                  <div class="section-title">
+                    <i-file-text :size="18" />
+                    <span>剧情片段</span>
+                    <span class="segment-count" v-if="segmentMap[item.id]?.length">{{ segmentMap[item.id]?.length }} 个</span>
+                  </div>
+                  <div class="f ac">
+                    <a-button size="small" class="batch-btn" :loading="segmentGenerating[item.id]" @click="handleGenerateSegments(item)">
+                      生成片段
+                    </a-button>
+                    <a-button size="small" class="batch-btn secondary" :loading="segmentLoading[item.id]" @click="loadSegments(item.id)">
+                      刷新
+                    </a-button>
+                  </div>
+                </div>
+
+                <div class="section-body">
+                  <div v-if="segmentLoading[item.id]" class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">剧情片段加载中...</p>
+                  </div>
+
+                  <div v-else-if="!segmentMap[item.id]?.length" class="empty-state">
+                    <div class="empty-icon">
+                      <i-inbox :size="32" />
+                    </div>
+                    <p class="empty-text">当前剧集暂无剧情片段</p>
+                    <p class="empty-hint">点击上方“生成片段”自动切分当前剧本</p>
+                  </div>
+
+                  <div v-else class="segment-list">
+                    <div v-for="(seg, idx) in segmentMap[item.id]" :key="seg.id" class="segment-card">
+                      <div class="segment-header">
+                        <div class="segment-title">
+                          <span class="segment-badge">片段 {{ seg.sort }}</span>
+                          <a-input v-model:value="seg.title" placeholder="片段标题" />
+                        </div>
+                        <div class="segment-actions">
+                          <a-button size="small" @click="moveSegment(item.id, idx, -1)" :disabled="idx === 0">上移</a-button>
+                          <a-button size="small" @click="moveSegment(item.id, idx, 1)" :disabled="idx === segmentMap[item.id].length - 1">下移</a-button>
+                          <a-button size="small" type="primary" :loading="segmentSaving[seg.id]" @click="saveSegment(item.id, seg)">保存</a-button>
+                          <a-button size="small" danger :loading="segmentDeleting[seg.id]" @click="deleteSegment(item.id, seg)">删除</a-button>
+                        </div>
+                      </div>
+                      <div class="segment-fields">
+                        <a-input v-model:value="seg.summary" placeholder="片段摘要（可选）" />
+                        <a-textarea v-model:value="seg.content" :rows="4" placeholder="片段内容" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </a-tab-pane>
         </a-tabs>
@@ -183,6 +238,19 @@ interface Script {
   content: string;
   outlineId: number;
   element: Element[];
+  segments?: ScriptSegment[];
+}
+
+interface ScriptSegment {
+  id: number;
+  scriptId: number;
+  projectId: number;
+  sort: number;
+  title: string;
+  content: string;
+  summary?: string;
+  startAnchor?: string;
+  endAnchor?: string;
 }
 
 const emit = defineEmits<{
@@ -203,6 +271,11 @@ const generateIntervals = ref<Record<number, ReturnType<typeof setInterval>>>({}
 const currentImage = ref<Element>();
 const textareaRefs = ref<Record<number, HTMLTextAreaElement | null>>({});
 const batchGenerateScript = ref<Script | null>(null);
+const segmentMap = ref<Record<number, ScriptSegment[]>>({});
+const segmentLoading = ref<Record<number, boolean>>({});
+const segmentGenerating = ref<Record<number, boolean>>({});
+const segmentSaving = ref<Record<number, boolean>>({});
+const segmentDeleting = ref<Record<number, boolean>>({});
 
 const currentScript = computed(() => scripts.value?.find((s) => s.id === selectSet.value));
 const generateData = computed(() => batchGenerateScript.value?.element ?? []);
@@ -267,8 +340,121 @@ async function fetchScripts() {
   try {
     const { data } = await axios.post("/script/geScriptApi", { projectId: projectId.value });
     scripts.value = data;
+    hydrateSegmentsFromScripts(data);
   } catch {
     message.error("获取剧本列表失败");
+  }
+}
+
+function hydrateSegmentsFromScripts(list: Script[] | undefined) {
+  if (!list?.length) return;
+  const nextMap: Record<number, ScriptSegment[]> = { ...segmentMap.value };
+  for (const script of list) {
+    if (Array.isArray(script.segments)) {
+      const rows = script.segments.map((seg) => ({ ...seg }));
+      nextMap[script.id] = rows.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+    }
+  }
+  segmentMap.value = nextMap;
+}
+
+async function loadSegments(scriptId: number) {
+  if (!scriptId) return;
+  segmentLoading.value[scriptId] = true;
+  try {
+    const { data } = await axios.post("/script/getScriptSegments", { scriptId });
+    const list = Array.isArray(data) ? data.map((seg: ScriptSegment) => ({ ...seg })) : [];
+    segmentMap.value[scriptId] = list.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+  } catch (err) {
+    console.error(err);
+    message.error("获取剧情片段失败");
+  } finally {
+    segmentLoading.value[scriptId] = false;
+  }
+}
+
+async function handleGenerateSegments(script: Script) {
+  if (!script?.id) return;
+  if (!String(script.content || "").trim()) {
+    message.warning("剧本内容为空，无法生成剧情片段");
+    return;
+  }
+  segmentGenerating.value[script.id] = true;
+  try {
+    const { data } = await axios.post("/script/generateScriptSegments", { scriptId: script.id });
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    const list = rows.map((seg: ScriptSegment) => ({ ...seg }));
+    segmentMap.value[script.id] = list.sort((a, b) => Number(a.sort || 0) - Number(b.sort || 0));
+    message.success(`已生成 ${rows.length} 个剧情片段`);
+  } catch (err: any) {
+    message.error(err?.message || "生成剧情片段失败");
+  } finally {
+    segmentGenerating.value[script.id] = false;
+    await loadSegments(script.id);
+  }
+}
+
+async function saveSegment(scriptId: number, segment: ScriptSegment) {
+  if (!segment?.id) return;
+  segmentSaving.value[segment.id] = true;
+  try {
+    const { data } = await axios.post("/script/updateScriptSegment", {
+      id: segment.id,
+      title: segment.title,
+      content: segment.content,
+      summary: segment.summary ?? "",
+      startAnchor: segment.startAnchor ?? "",
+      endAnchor: segment.endAnchor ?? "",
+    });
+    const list = segmentMap.value[scriptId] || [];
+    segmentMap.value[scriptId] = list.map((item) => (item.id === segment.id ? { ...item, ...data } : item));
+    message.success("片段已保存");
+    message.warning("片段已变更，建议重新检查或生成对应分镜");
+  } catch (err) {
+    console.error(err);
+    message.error("保存片段失败");
+  } finally {
+    segmentSaving.value[segment.id] = false;
+  }
+}
+
+async function deleteSegment(scriptId: number, segment: ScriptSegment) {
+  if (!segment?.id) return;
+  segmentDeleting.value[segment.id] = true;
+  try {
+    await axios.post("/script/deleteScriptSegment", { id: segment.id });
+    segmentMap.value[scriptId] = (segmentMap.value[scriptId] || []).filter((item) => item.id !== segment.id);
+    message.success("片段已删除");
+    message.warning("片段已变更，建议重新检查或生成对应分镜");
+  } catch (err) {
+    console.error(err);
+    message.error("删除片段失败");
+  } finally {
+    segmentDeleting.value[segment.id] = false;
+    await loadSegments(scriptId);
+  }
+}
+
+async function moveSegment(scriptId: number, index: number, delta: number) {
+  const list = segmentMap.value[scriptId] || [];
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= list.length) return;
+  const current = list[index];
+  const target = list[nextIndex];
+  if (!current?.id || !target?.id) return;
+  try {
+    segmentSaving.value[current.id] = true;
+    segmentSaving.value[target.id] = true;
+    await axios.post("/script/updateScriptSegment", { id: current.id, sort: target.sort });
+    await axios.post("/script/updateScriptSegment", { id: target.id, sort: current.sort });
+    await loadSegments(scriptId);
+    message.warning("片段顺序已变更，建议重新检查分镜顺序");
+  } catch (err) {
+    console.error(err);
+    message.error("调整片段顺序失败");
+  } finally {
+    segmentSaving.value[current.id] = false;
+    segmentSaving.value[target.id] = false;
   }
 }
 
@@ -285,6 +471,7 @@ async function handleGenerate() {
     await axios.post("/script/generateScriptApi", { outlineId, scriptId: id });
     message.success("生成剧本成功");
     emit("getScriptData");
+    await loadSegments(id);
   } catch (err: any) {
     message.error(err.message || "生成剧本失败");
   } finally {
@@ -305,6 +492,7 @@ async function saveScript() {
       content: script.content,
     });
     message.success("保存成功");
+    await loadSegments(script.id);
   } catch {
     message.error("保存失败");
   }
@@ -355,6 +543,7 @@ watch(
   scripts,
   async (data) => {
     if (data?.length) {
+      hydrateSegmentsFromScripts(data);
       selectSet.value = data[0].id;
       await nextTick();
       handleTabChange(selectSet.value);
@@ -375,6 +564,10 @@ watch(selectSet, async () => {
   const textarea = textareaRefs.value[selectSet.value];
   if (textarea) {
     adjustTextareaHeight(textarea);
+  }
+  const scriptId = Number(selectSet.value);
+  if (scriptId && !segmentMap.value[scriptId]) {
+    await loadSegments(scriptId);
   }
 });
 //导出剧本
@@ -813,6 +1006,85 @@ $line-height: 28px;
         margin: 0;
         font-size: 13px;
         color: #9ca3af;
+      }
+    }
+
+    .segment-section {
+      .section-header {
+        .segment-count {
+          margin-left: 8px;
+          padding: 2px 8px;
+          background: rgba(147, 51, 234, 0.1);
+          color: #7c3aed;
+          border-radius: 9999px;
+          font-size: 12px;
+          font-weight: 500;
+        }
+
+        .batch-btn.secondary {
+          background: #f9fafb;
+          color: #4b5563;
+          border: 1px solid #e5e7eb;
+          box-shadow: none;
+        }
+      }
+
+      .segment-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .segment-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+      }
+
+      .segment-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .segment-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 240px;
+
+        :deep(.ant-input) {
+          min-width: 220px;
+        }
+      }
+
+      .segment-badge {
+        padding: 2px 8px;
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563eb;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .segment-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .segment-fields {
+        display: grid;
+        gap: 8px;
+
+        :deep(.ant-input),
+        :deep(.ant-input-textarea) {
+          border-radius: 10px;
+        }
       }
     }
   }

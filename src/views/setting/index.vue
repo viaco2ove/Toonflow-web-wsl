@@ -16,6 +16,9 @@
     <skeleton title="视频模型配置" divider>
       <videoModelConfig />
     </skeleton>
+    <skeleton title="语音模型配置" divider>
+      <voiceModelConfig />
+    </skeleton>
     <skeleton title="提示词配置" divider>
       <promptsEdit />
     </skeleton>
@@ -41,6 +44,7 @@ import requestConfig from "./components/requestConfig.vue";
 import loginConfig from "./components/loginConfig.vue";
 import aiConfog from "./components/aiConfog.vue";
 import videoModelConfig from "./components/videoModelConfig.vue";
+import voiceModelConfig from "./components/voiceModelConfig.vue";
 import promptsEdit from "./components/promptsEdit.vue";
 import dbConfig from "./components/dbConfig.vue";
 import otherConfig from "./components/otherConfig.vue";
